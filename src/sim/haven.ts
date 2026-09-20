@@ -8,7 +8,7 @@
 import { Emitter } from '../core/events';
 import { Rng } from '../core/rng';
 import { clamp, clamp01 } from '../core/mathx';
-import { ClockSnapshot, SECONDS_PER_DAY, WorldClock } from '../core/time';
+import { ClockSnapshot, WorldClock } from '../core/time';
 import { Terrain, findFoundingSite } from '../world/terrain';
 import { PropRegistry, scatterProps } from '../world/props';
 import { NavGrid } from '../world/navgrid';
@@ -91,27 +91,30 @@ export class Haven implements ColonyView {
     daysPassed: 0,
   };
 
-  private nextVillagerId = 1;
-  private nextLogId = 1;
+  // Public because the save system round-trips them; nothing else writes here.
+  nextVillagerId = 1;
+  nextLogId = 1;
+  milestonesHit = new Set<string>();
   private derivedTimer = 0;
   private growthTimer = 25;
   private regrowthTimer = 40;
   private favorAccumulator = 0;
-  private milestonesHit = new Set<string>();
   private lastDayLogged = 1;
 
-  constructor(seed: string, options: { populate?: boolean } = {}) {
+  constructor(seed: string, options: { populate?: boolean; blank?: boolean } = {}) {
     this.seed = seed;
     this.rng = new Rng(`${seed}:sim`);
     this.terrain = new Terrain(seed);
     this.props = new PropRegistry(this.terrain);
-    scatterProps(this.terrain, this.props, hashSeed(seed));
+    // A blank haven is one that is about to be overwritten from a save file,
+    // so there is no point scattering a forest just to throw it away.
+    if (!options.blank) scatterProps(this.terrain, this.props, hashSeed(seed));
     this.nav = new NavGrid(this.terrain);
     this.structures = new StructureRegistry(this.terrain);
     this.clock = new WorldClock();
     this.origin = findFoundingSite(this.terrain);
 
-    if (options.populate !== false) {
+    if (options.populate !== false && !options.blank) {
       this.foundVillage();
     }
     this.recomputeDerived();
@@ -602,8 +605,10 @@ export class Haven implements ColonyView {
   catchUp(seconds: number): { elapsed: number; before: Record<ResourceKind, number>; beforePop: number } {
     const before = { ...this.resources };
     const beforePop = this.villagers.length;
-    const capped = Math.min(seconds, SECONDS_PER_DAY * 3);
-    const step = 0.75;
+    // Eight hours is the most we will replay. Beyond that the stockpile has
+    // long since filled anyway, so there is nothing further to earn.
+    const capped = Math.min(seconds, 60 * 60 * 8);
+    const step = 1;
     let remaining = capped;
     while (remaining > 0) {
       const dt = Math.min(step, remaining);

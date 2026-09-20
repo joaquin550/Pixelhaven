@@ -118,6 +118,25 @@ export class StructureRegistry {
     return structure;
   }
 
+  /**
+   * Re-adds a structure from a save file. Width, depth and work come from the
+   * blueprint definition rather than the save, so tuning a building's cost or
+   * footprint does not break existing havens.
+   */
+  restore(structure: Structure): Structure | null {
+    const def = BLUEPRINT_BY_ID.get(structure.defId);
+    if (!def) return null;
+    structure.width = def.width;
+    structure.depth = def.depth;
+    structure.work = def.work;
+    structure.progress = Math.min(structure.progress, def.work);
+    this.structures.push(structure);
+    this.nextId = Math.max(this.nextId, structure.id + 1);
+    this.stampOccupancy(structure, def);
+    this.revision++;
+    return structure;
+  }
+
   cancel(structure: Structure): Record<ResourceKind, number> {
     const def = BLUEPRINT_BY_ID.get(structure.defId);
     this.clearOccupancy(structure);
