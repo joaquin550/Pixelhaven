@@ -34,11 +34,11 @@ jobs:
       - run: npm ci
       - run: npm run build
 
-      # `enablement` turns Pages on for the repository if it is off, so there
-      # is no settings toggle to find before the first deploy.
+      # Pages has to be switched on for the repository first, under
+      # Settings -> Pages -> Source: GitHub Actions. The workflow token is not
+      # allowed to do that for you, and on a private repository Pages needs a
+      # paid plan - see the README for the alternatives.
       - uses: actions/configure-pages@v5
-        with:
-          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

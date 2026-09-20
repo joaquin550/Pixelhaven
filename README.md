@@ -50,11 +50,19 @@ Safari on the iPad. Both devices need to be on the same network.
 npm run build     # outputs a static site to dist/
 ```
 
-`dist/` is plain static files with relative paths, so it works on GitHub Pages,
-Netlify, Vercel, or any web server. This repo ships a GitHub Actions workflow
-(`.github/workflows/deploy.yml`) that publishes to GitHub Pages on every push to
-`main` — enable Pages in **Settings → Pages → Source: GitHub Actions** and it
-will build and deploy itself.
+`dist/` is plain static files with relative paths, so it will run on anything
+that serves files.
+
+- **Netlify Drop** (`app.netlify.com/drop`) — drag the `dist` folder or a zip of
+  it onto the page. No account, no config, instant URL. The quickest way to get
+  it onto a tablet.
+- **Netlify, Vercel or Cloudflare Pages, connected to the repo** — all three
+  build private repositories on their free tiers. Build command `npm run build`,
+  publish directory `dist`.
+- **GitHub Pages** — this repo ships `.github/workflows/deploy.yml`, which
+  publishes on every push. It needs Pages switched on first under
+  **Settings → Pages → Source: GitHub Actions**. Note that Pages on a *private*
+  repository requires a paid GitHub plan; on a public repository it is free.
 
 Once it is on a URL, open it in Safari and tap **Share → Add to Home Screen**.
 It then launches full screen with no browser chrome, keeps its save, and runs
