@@ -171,6 +171,7 @@ export class PropRegistry {
       const type = this.terrain.typeAt(x, z);
       if (type !== TerrainType.Grass && type !== TerrainType.Dirt) continue;
       if (this.terrain.slopeAt(x, z) > 1) continue;
+      if (hasTreeNeighbour(this.terrain, x, z)) continue;
       const kind = rng.weighted(['pine', 'oak', 'birch'] as PropKind[], [3, 3, 2]);
       return this.add(kind, x + rng.range(0.2, 0.8), z + rng.range(0.2, 0.8), rng);
     }
@@ -202,12 +203,17 @@ export function scatterProps(terrain: Terrain, registry: PropRegistry, seed: num
       const slope = terrain.slopeAt(x, z);
       const fert = terrain.fertility[z * WORLD_SIZE + x];
 
-      const groveField = clamp01(forest.fbm(x * 0.045, z * 0.045, 3) * 0.5 + 0.5);
+      // Raised to a power so groves read as groves and the gaps between them
+      // stay properly open - villages need somewhere to go.
+      const groveField = Math.pow(clamp01(forest.fbm(x * 0.045, z * 0.045, 3) * 0.5 + 0.5), 1.9);
       const rockField = clamp01(rocks.fbm(x * 0.07 + 31, z * 0.07 - 17, 3) * 0.5 + 0.5);
 
       // Trees: grass and dirt, gentle slopes, denser in fertile groves.
-      if ((type === TerrainType.Grass || type === TerrainType.Dirt) && slope <= 1) {
-        const density = groveField * fert * 0.62;
+      // Never two trees side by side: a solid wall of trunks hides the
+      // villagers, blocks every path through the wood, and reads as a green
+      // blanket rather than a forest you can walk into.
+      if ((type === TerrainType.Grass || type === TerrainType.Dirt) && slope <= 1 && !hasTreeNeighbour(terrain, x, z)) {
+        const density = groveField * fert * 0.78;
         if (rng.chance(density)) {
           const kind = pickTreeKind(rng, h, fert);
           registry.add(kind, x + rng.range(0.15, 0.85), z + rng.range(0.15, 0.85), rng);
@@ -244,6 +250,16 @@ export function scatterProps(terrain: Terrain, registry: PropRegistry, seed: num
       }
     }
   }
+}
+
+/** True when an orthogonal neighbour already holds a blocking prop. */
+function hasTreeNeighbour(terrain: Terrain, x: number, z: number): boolean {
+  return (
+    terrain.hasOccupancy(x + 1, z, Occupancy.Prop) ||
+    terrain.hasOccupancy(x - 1, z, Occupancy.Prop) ||
+    terrain.hasOccupancy(x, z + 1, Occupancy.Prop) ||
+    terrain.hasOccupancy(x, z - 1, Occupancy.Prop)
+  );
 }
 
 function pickTreeKind(rng: Rng, height: number, fertility: number): PropKind {

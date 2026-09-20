@@ -114,6 +114,7 @@ export class PropRenderer {
         vertexColors: true,
         seasonAttribute: true,
         seasonResponse: response * 0.25,
+        blendScale: 0.2,
         snowOnTop: true,
       });
       entry.trunk = new InstancedMesh(parts.trunk, material, capacity);
@@ -128,6 +129,9 @@ export class PropRenderer {
         vertexColors: true,
         seasonAttribute: true,
         seasonResponse: response,
+        // Leaves get the season's full authority - this is what actually turns
+        // an oak orange in October.
+        blendScale: 1,
         snowOnTop: true,
       });
       entry.foliage = new InstancedMesh(parts.foliage, material, capacity);
@@ -142,6 +146,7 @@ export class PropRenderer {
         vertexColors: true,
         seasonAttribute: true,
         seasonResponse: response * 0.3,
+        blendScale: 0.25,
         snowOnTop: true,
       });
       entry.solid = new InstancedMesh(parts.solid, material, capacity);

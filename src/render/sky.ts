@@ -201,13 +201,15 @@ export class SkyRenderer {
     );
 
     this.sun.color.copy(this.sunColor);
-    this.sun.intensity = lerp(0.22, 2.25, daylight);
+    // The night floor is moonlight: enough to read the village by, which is
+    // the difference between a quiet evening and a black screen.
+    this.sun.intensity = lerp(0.7, 2.25, daylight);
 
     this.ambientSky.copy(NIGHT.ambient).lerp(look.ambient, daylight);
-    this.ambientGround.set(0x4a4436).lerp(new Color(0x6b6250), daylight);
+    this.ambientGround.set(0x54607e).lerp(new Color(0x6b6250), daylight);
     this.hemisphere.color.copy(this.ambientSky);
     this.hemisphere.groundColor.copy(this.ambientGround);
-    this.hemisphere.intensity = lerp(0.65, 1.25, daylight);
+    this.hemisphere.intensity = lerp(1.45, 1.3, daylight);
 
     this.fog.color.copy(this.fogColor);
     this.scene.background = this.fogColor;
@@ -215,9 +217,11 @@ export class SkyRenderer {
     // --- season tinting ---------------------------------------------------
     updateSeasonUniforms({
       tint: look.tint,
+      blend: look.blend,
+      blendAmount: look.blendAmount,
       snow: look.snow,
       snowColor: SNOW_COLOR,
-      nightAmount: (1 - daylight) * 0.45,
+      nightAmount: (1 - daylight) * 0.38,
       nightTint: NIGHT.ambient,
     });
 
@@ -271,10 +275,14 @@ export class SkyRenderer {
     return this.currentLook;
   }
 
-  /** Adjusts fog to the camera distance so close-ups stay clear. */
+  /**
+   * Adjusts fog to the camera distance so close-ups stay crisp while the open
+   * ocean still fades into haze at the edge of the view - without it the sea
+   * reads as an infinite flat sheet of dark blue.
+   */
   setFogRange(cameraDistance: number): void {
-    this.fog.near = Math.max(8, cameraDistance * 0.9);
-    this.fog.far = cameraDistance * 3.4 + WORLD_SIZE * 0.8;
+    this.fog.near = Math.max(8, cameraDistance * 0.75);
+    this.fog.far = cameraDistance * 2.2 + WORLD_SIZE * 0.45;
   }
 
   dispose(): void {

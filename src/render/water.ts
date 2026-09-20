@@ -101,21 +101,28 @@ const FRAGMENT = /* glsl */ `
 
   void main() {
     float ground = texture2D(uHeight, clamp(vIsland, 0.0, 1.0)).r * uMaxHeight;
-    float depth = clamp((uWaterLevel - ground) / 6.0, 0.0, 1.0);
 
-    vec3 colour = mix(uShallow, uDeep, smoothstep(0.04, 0.8, depth));
+    // How far under the surface the sea floor sits. At or above zero there is
+    // dry land here, so the plane must not draw at all - otherwise the ocean
+    // paints straight over the island.
+    float submersion = uWaterLevel - ground;
+    if (submersion <= 0.0) discard;
 
-    // Foam: a soft band wherever the sea is nearly touching the sand, pulsed
-    // so it reads as surf rather than a painted outline.
-    float shore = 1.0 - smoothstep(0.0, 0.2, depth);
+    float depth = clamp(submersion / 6.0, 0.0, 1.0);
+    vec3 colour = mix(uShallow, uDeep, smoothstep(0.02, 0.75, depth));
+
+    // Foam: a narrow band in the shallows, pulsed so it reads as surf rather
+    // than a painted outline.
+    float shore = 1.0 - smoothstep(0.0, 1.4, submersion);
     float surf = sin(vWorld.x * 1.9 + vWorld.z * 1.4 + uTime * 1.8) * 0.5 + 0.5;
-    colour = mix(colour, uFoam, clamp(shore * (0.3 + surf * 0.45), 0.0, 1.0));
+    colour = mix(colour, uFoam, clamp(shore * (0.18 + surf * 0.34), 0.0, 1.0));
 
     // Specular glints, daytime only.
     float glint = sin(vWorld.x * 3.3 + uTime * 1.7) * sin(vWorld.z * 2.9 - uTime * 1.1);
     colour += uSparkle * pow(max(glint, 0.0), 28.0) * 0.6 * (1.0 - uNight);
 
-    float alpha = mix(0.66, 0.94, depth);
+    // The very edge is nearly clear, so you can see the sand under it.
+    float alpha = mix(0.34, 0.92, smoothstep(0.0, 0.45, depth));
     gl_FragColor = vec4(colour, alpha);
 
     #include <fog_fragment>

@@ -41,9 +41,9 @@ export interface ClockSnapshot {
 export class WorldClock {
   elapsed: number;
 
-  constructor(elapsed = SECONDS_PER_DAY * 0.28) {
-    // New havens open a little after sunrise so the first thing you see is
-    // villagers heading out to work.
+  constructor(elapsed = SECONDS_PER_DAY * 0.36) {
+    // New havens open mid-morning: full light, and the first thing you see
+    // is villagers already heading out to work.
     this.elapsed = elapsed;
   }
 

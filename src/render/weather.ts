@@ -18,9 +18,8 @@ import {
   PointsMaterial,
 } from 'three';
 import { Rng } from '../core/rng';
-import { clamp01 } from '../core/mathx';
 import { ClockSnapshot, Season } from '../core/time';
-import { WATER_LEVEL, WORLD_SIZE } from '../world/constants';
+import { WATER_LEVEL } from '../world/constants';
 
 const MAX_PARTICLES = 900;
 
@@ -257,4 +256,3 @@ function createFlakeTexture(): CanvasTexture {
   return texture;
 }
 
-export { clamp01, WORLD_SIZE };

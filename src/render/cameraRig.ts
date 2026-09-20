@@ -32,6 +32,13 @@ export interface CameraRigOptions {
   onTap?: (event: TapEvent) => void;
   onDoubleTap?: (event: TapEvent) => void;
   onDragStart?: () => void;
+  /**
+   * Single-finger drag while placing a blueprint. Fires on press and on every
+   * move, so the ghost can follow the finger before it lifts.
+   */
+  onPlacementMove?: (event: TapEvent) => void;
+  /** Finger lifted while placing. */
+  onPlacementCommit?: (event: TapEvent) => void;
   /** Called with a height lookup so the camera target hugs the terrain. */
   groundHeight?: (x: number, z: number) => number;
 }
@@ -69,6 +76,12 @@ export class CameraRig {
   private pinchMid = new Vector2();
   private lastTapTime = 0;
   private lastTapPos = new Vector2();
+  /**
+   * While true a single finger aims a blueprint instead of orbiting, so you
+   * can press, slide the ghost into place, and let go. Two fingers still pan
+   * and zoom, so you can line up a shot without cancelling the placement.
+   */
+  private placementMode = false;
   private disposers: (() => void)[] = [];
 
   constructor(
@@ -104,6 +117,11 @@ export class CameraRig {
     if (distance !== undefined) {
       this.targetDistance = clamp(distance, MIN_DISTANCE, MAX_DISTANCE);
     }
+  }
+
+  /** Switches single-finger drag between orbiting and aiming a blueprint. */
+  setPlacementMode(enabled: boolean): void {
+    this.placementMode = enabled;
   }
 
   zoomBy(factor: number): void {
@@ -165,7 +183,7 @@ export class CameraRig {
 
     const onPointerDown = (event: PointerEvent) => {
       el.setPointerCapture?.(event.pointerId);
-      this.pointers.set(event.pointerId, {
+      const record: PointerRecord = {
         id: event.pointerId,
         x: event.clientX,
         y: event.clientY,
@@ -173,10 +191,14 @@ export class CameraRig {
         startY: event.clientY,
         startTime: performance.now(),
         moved: 0,
-      });
+      };
+      this.pointers.set(event.pointerId, record);
       this.spin = 0;
       if (this.pointers.size === 2) this.beginPinch();
-      if (this.pointers.size === 1) this.options.onDragStart?.();
+      if (this.pointers.size === 1) {
+        this.options.onDragStart?.();
+        if (this.placementMode) this.options.onPlacementMove?.(this.toTapEvent(record));
+      }
     };
 
     const onPointerMove = (event: PointerEvent) => {
@@ -189,7 +211,8 @@ export class CameraRig {
       record.moved += Math.abs(dx) + Math.abs(dy);
 
       if (this.pointers.size === 1) {
-        this.orbit(dx, dy);
+        if (this.placementMode) this.options.onPlacementMove?.(this.toTapEvent(record));
+        else this.orbit(dx, dy);
       } else if (this.pointers.size === 2) {
         this.pinch();
       }
@@ -203,7 +226,14 @@ export class CameraRig {
       if (this.pointers.size === 1) this.beginPinch();
       if (!record) return;
 
-      // A tap is short, still, and the only finger down.
+      // While placing, letting go commits wherever the ghost ended up - no
+      // movement threshold, because sliding it into position is the point.
+      if (this.placementMode && this.pointers.size === 0) {
+        this.options.onPlacementCommit?.(this.toTapEvent(record));
+        return;
+      }
+
+      // Otherwise a tap is short, still, and the only finger down.
       const elapsed = performance.now() - record.startTime;
       if (elapsed < 320 && record.moved < 14) {
         this.handleTap(record);
@@ -298,13 +328,21 @@ export class CameraRig {
     this.targetFocus.z -= (right.z * dx + forward.z * dy) * worldPerPixel;
   }
 
-  private handleTap(record: PointerRecord): void {
+  /** Converts a pointer record into normalised device coordinates. */
+  private toTapEvent(record: PointerRecord): TapEvent {
     const rect = this.element.getBoundingClientRect();
-    const ndc = new Vector2(
-      ((record.x - rect.left) / rect.width) * 2 - 1,
-      -((record.y - rect.top) / rect.height) * 2 + 1,
-    );
-    const event: TapEvent = { x: record.x, y: record.y, ndc };
+    return {
+      x: record.x,
+      y: record.y,
+      ndc: new Vector2(
+        ((record.x - rect.left) / rect.width) * 2 - 1,
+        -((record.y - rect.top) / rect.height) * 2 + 1,
+      ),
+    };
+  }
+
+  private handleTap(record: PointerRecord): void {
+    const event = this.toTapEvent(record);
 
     const now = performance.now();
     const isDouble =

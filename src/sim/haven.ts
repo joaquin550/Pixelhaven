@@ -99,6 +99,8 @@ export class Haven implements ColonyView {
   private growthTimer = 25;
   private regrowthTimer = 40;
   private favorAccumulator = 0;
+  /** Stops the "storehouse is full" nudge repeating every few seconds. */
+  private fullStoreCooldown = 0;
   private lastDayLogged = 1;
 
   constructor(seed: string, options: { populate?: boolean; blank?: boolean } = {}) {
@@ -200,6 +202,7 @@ export class Haven implements ColonyView {
     this.updatePopulation(dt);
     this.updateRegrowth(dt);
     this.updateLogs(dt);
+    this.checkStorage(dt);
 
     if (snapshot.day !== this.lastDayLogged) {
       this.lastDayLogged = snapshot.day;
@@ -380,6 +383,20 @@ export class Haven implements ColonyView {
       const planted = this.props.tryPlantTree(this.rng);
       if (planted) this.events.emit('propsChanged', undefined);
     }
+  }
+
+  /**
+   * A full storehouse is the one state where villagers visibly stop working,
+   * so it is worth saying out loud rather than leaving the player to wonder
+   * why everyone has wandered off.
+   */
+  private checkStorage(dt: number): void {
+    this.fullStoreCooldown = Math.max(0, this.fullStoreCooldown - dt);
+    if (this.fullStoreCooldown > 0) return;
+    const used = this.resources.wood + this.resources.stone + this.resources.food;
+    if (used < this.capacity * 0.96) return;
+    this.fullStoreCooldown = 240;
+    this.log('The storehouse is full. Time to mark out something worth building.', 'warn');
   }
 
   private updateLogs(dt: number): void {

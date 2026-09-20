@@ -148,6 +148,9 @@ function generateIsland(terrain: Terrain): void {
 
   const half = WORLD_SIZE / 2;
   const { heights, fertility } = terrain;
+  // Heights are accumulated as floats and only quantised at the very end -
+  // rounding each octave as it lands produces a corduroy of one-voxel terraces.
+  const raw = new Float32Array(WORLD_SIZE * WORLD_SIZE);
 
   for (let z = 0; z < WORLD_SIZE; z++) {
     for (let x = 0; x < WORLD_SIZE; x++) {
@@ -171,18 +174,41 @@ function generateIsland(terrain: Terrain): void {
       const ridgeMask = clamp01(mountain.fbm(nx * 1.6 + 11, nz * 1.6 - 7, 2) * 0.5 + 0.5 - 0.32) * 2.2;
       const ridge = mountain.ridged(nx * 3.4, nz * 3.4, 4) * ridgeMask;
 
-      const elevation = base * 0.62 + fine * 0.18 + ridge * 0.55;
-      const h = elevation * island * (MAX_HEIGHT - 3);
-      heights[i] = Math.round(clamp(h, 0, MAX_HEIGHT));
+      const elevation = base * 0.64 + fine * 0.12 + ridge * 0.55;
+      raw[i] = clamp(elevation * island * (MAX_HEIGHT - 3), 0, MAX_HEIGHT);
 
       fertility[i] = clamp01(moisture.fbm(nx * 4.2 - 5, nz * 4.2 + 3, 3) * 0.5 + 0.55);
     }
   }
 
+  blurHeights(raw);
+  for (let i = 0; i < raw.length; i++) heights[i] = Math.round(raw[i]);
+
   carveRiver(terrain, seedNum);
   smoothShallows(terrain);
   paintMaterials(terrain);
   terrain.revision++;
+}
+
+/**
+ * One gentle blur pass over the float height field.
+ *
+ * Without it the terraces come out one voxel wide and the island reads as
+ * corduroy; with it they broaden into the wide steps that make a voxel
+ * landscape look carved rather than noisy.
+ */
+function blurHeights(raw: Float32Array): void {
+  const copy = Float32Array.from(raw);
+  const at = (x: number, z: number): number =>
+    copy[index(clamp(x, 0, WORLD_SIZE - 1), clamp(z, 0, WORLD_SIZE - 1))];
+
+  for (let z = 0; z < WORLD_SIZE; z++) {
+    for (let x = 0; x < WORLD_SIZE; x++) {
+      const orthogonal = at(x - 1, z) + at(x + 1, z) + at(x, z - 1) + at(x, z + 1);
+      const diagonal = at(x - 1, z - 1) + at(x + 1, z - 1) + at(x - 1, z + 1) + at(x + 1, z + 1);
+      raw[index(x, z)] = copy[index(x, z)] * 0.38 + orthogonal * 0.125 + diagonal * 0.03;
+    }
+  }
 }
 
 /**
@@ -320,7 +346,7 @@ export function findFoundingSite(terrain: Terrain): { x: number; z: number } {
     for (let x = 6; x < WORLD_SIZE - 6; x += 2) {
       if (!terrain.isLand(x, z)) continue;
       const h = terrain.heightAt(x, z);
-      if (h < WATER_LEVEL + 1 || h > WATER_LEVEL + 7) continue;
+      if (h < WATER_LEVEL + 2 || h > WATER_LEVEL + 8) continue;
 
       // Prefer big flat areas, some nearby water, and a spot near the middle.
       let flatness = 0;
@@ -333,7 +359,7 @@ export function findFoundingSite(terrain: Terrain): { x: number; z: number } {
         }
       }
       const centrality = 1 - Math.hypot(x - half, z - half) / half;
-      const score = flatness * 1.4 + Math.min(water, 18) * 1.1 + centrality * 30;
+      const score = flatness * 1.8 + Math.min(water, 12) * 0.8 + centrality * 30;
       if (score > bestScore) {
         bestScore = score;
         best = { x, z };

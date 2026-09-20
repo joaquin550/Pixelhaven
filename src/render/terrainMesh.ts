@@ -99,12 +99,15 @@ function emitTop(
     b.season.push(response, 1);
   }
 
-  // Flip the quad's diagonal towards the darker corners so AO gradients do not
-  // crease the wrong way.
+  // Wound counter-clockwise as seen from above, so the quad faces +Y and
+  // survives backface culling.
+  //
+  // The diagonal is flipped towards the darker pair of corners so the AO
+  // gradient does not crease the wrong way across the quad.
   if (ao[0] + ao[2] > ao[1] + ao[3]) {
-    b.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
+    b.indices.push(base, base + 2, base + 1, base, base + 3, base + 2);
   } else {
-    b.indices.push(base + 1, base + 2, base + 3, base + 1, base + 3, base);
+    b.indices.push(base + 1, base + 3, base + 2, base + 1, base, base + 3);
   }
 }
 
@@ -190,6 +193,9 @@ export class TerrainRenderer {
       vertexColors: true,
       seasonAttribute: true,
       seasonResponse: 1,
+      // Grass takes a gold wash in autumn, not the full leaf colour - the
+      // ground should read as dry, not as a pile of leaves.
+      blendScale: 0.42,
       snowOnTop: true,
     });
     this.mesh = new Mesh(buildTerrainGeometry(terrain), material);

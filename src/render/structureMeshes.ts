@@ -10,7 +10,6 @@
  */
 import {
   BoxGeometry,
-  BufferGeometry,
   EdgesGeometry,
   Group,
   LineBasicMaterial,
@@ -56,6 +55,7 @@ export class StructureRenderer {
     vertexColors: true,
     seasonAttribute: true,
     seasonResponse: 0.25,
+    blendScale: 0.25,
     snowOnTop: true,
   });
 
@@ -166,6 +166,7 @@ export class StructureRenderer {
         vertexColors: true,
         seasonAttribute: true,
         seasonResponse: 0.25,
+        blendScale: 0.25,
         snowOnTop: true,
       });
       material.clippingPlanes = [view.clip];
@@ -307,23 +308,24 @@ function buildHouse(
     season: 0.1,
   });
 
-  // Stepped roof: three shrinking slabs make a convincing hip roof in voxels.
+  // Stepped hip roof. Five shrinking slabs rather than three: seen from the
+  // usual high angle a shallow roof just reads as a flat lid, and the whole
+  // village ends up looking like a set of tables.
   let roofY = 0.1 + wallHeight;
-  const steps = 3;
-  for (let i = 0; i < steps; i++) {
-    const t = i / steps;
-    const size = 1 - t * 0.62;
+  const sizes = [1, 0.78, 0.57, 0.37, 0.18];
+  for (let i = 0; i < sizes.length; i++) {
+    const size = sizes[i];
     lit.addFromBase(
       cx,
       roofY,
       cz,
-      (w + 0.45) * size,
-      0.34,
-      (d + 0.45) * size,
+      (w + 0.5) * size,
+      0.3,
+      (d + 0.5) * size,
       i % 2 === 0 ? roofColor : roofDark,
       { season: 0.15, snow: 1 },
     );
-    roofY += 0.3;
+    roofY += 0.26;
   }
 
   // Chimney with a little smoke-stained cap.
@@ -352,15 +354,16 @@ function buildBarn(lit: BoxBuilder, glow: BoxBuilder): number {
   const d = 3;
   lit.addFromBase(1.5, -0.1, 1.5, w - 0.1, 0.22, d - 0.1, BUILD.stone, { season: 0.1 });
   lit.addFromBase(1.5, 0.1, 1.5, w - 0.3, 1.5, d - 0.3, BUILD.timber, { season: 0.1, snow: 0.2 });
-  // Gambrel roof: two slopes per side, faked with four slabs.
-  lit.addFromBase(1.5, 1.6, 1.5, w + 0.3, 0.32, d + 0.3, BUILD.roofTileDark, { season: 0.12, snow: 1 });
-  lit.addFromBase(1.5, 1.9, 1.5, w - 0.3, 0.32, d - 0.3, BUILD.roofTile, { season: 0.12, snow: 1 });
-  lit.addFromBase(1.5, 2.2, 1.5, w - 1.2, 0.3, d - 1.2, BUILD.roofTileDark, { season: 0.12, snow: 1 });
+  // Gambrel roof: a steep lower slope and a shallow cap, faked with slabs.
+  lit.addFromBase(1.5, 1.6, 1.5, w + 0.35, 0.3, d + 0.35, BUILD.roofTileDark, { season: 0.12, snow: 1 });
+  lit.addFromBase(1.5, 1.88, 1.5, w - 0.2, 0.3, d - 0.2, BUILD.roofTile, { season: 0.12, snow: 1 });
+  lit.addFromBase(1.5, 2.16, 1.5, w - 1.0, 0.3, d - 1.0, BUILD.roofTileDark, { season: 0.12, snow: 1 });
+  lit.addFromBase(1.5, 2.42, 1.5, w - 1.9, 0.28, d - 1.9, BUILD.roofTile, { season: 0.12, snow: 1 });
   // Big double doors.
   lit.addFromBase(1.5, 0.1, d - 0.16, 1.3, 1.25, 0.12, BUILD.timberDark, { season: 0 });
   lit.addFromBase(1.5, 0.1, d - 0.12, 0.08, 1.25, 0.08, BUILD.plank, { season: 0 });
   glow.addFromBase(1.5, 1.72, d - 0.2, 0.34, 0.3, 0.1, BUILD.window, { flat: true });
-  return 2.5;
+  return 2.8;
 }
 
 function buildWorkshop(lit: BoxBuilder, glow: BoxBuilder): number {
@@ -474,8 +477,10 @@ function buildWell(lit: BoxBuilder): number {
   lit.addFromBase(cx, 0.1, cz, 0.85, 0.06, 0.85, 0x2d4a58, { season: 0, flat: true });
   lit.addFromBase(cx - 0.5, 0.62, cz, 0.14, 1.0, 0.14, BUILD.timber, { season: 0.08 });
   lit.addFromBase(cx + 0.5, 0.62, cz, 0.14, 1.0, 0.14, BUILD.timber, { season: 0.08 });
-  lit.addFromBase(cx, 1.6, cz, 1.5, 0.2, 1.2, BUILD.thatch, { season: 0.2, snow: 1 });
-  lit.addFromBase(cx, 1.78, cz, 1.0, 0.18, 0.8, BUILD.thatchDark, { season: 0.2, snow: 1 });
+  // A small stepped canopy, not a tabletop.
+  lit.addFromBase(cx, 1.58, cz, 1.35, 0.18, 1.1, BUILD.thatch, { season: 0.2, snow: 1 });
+  lit.addFromBase(cx, 1.74, cz, 0.95, 0.18, 0.78, BUILD.thatchDark, { season: 0.2, snow: 1 });
+  lit.addFromBase(cx, 1.9, cz, 0.5, 0.18, 0.42, BUILD.thatch, { season: 0.2, snow: 1 });
   lit.addFromBase(cx, 1.1, cz, 0.28, 0.3, 0.28, BUILD.timberDark, { season: 0 });
   return 2.0;
 }
@@ -526,4 +531,3 @@ function buildLantern(lit: BoxBuilder, glow: BoxBuilder): number {
   return 1.85;
 }
 
-export type { BufferGeometry };

@@ -229,6 +229,23 @@ function drawSleeping(ctx: Ctx, p: Paints): void {
   px(ctx, 19, y + 1, 3, 3, SHOE);
 }
 
+/**
+ * A single standing, camera-facing frame, scaled up for the inspector panel.
+ *
+ * Reuses the same drawing routine as the in-world atlas, so the portrait is
+ * always exactly the person you tapped.
+ */
+export function createPortraitCanvas(look: VillagerLook, scale = 3): HTMLCanvasElement {
+  const canvas = document.createElement('canvas');
+  canvas.width = CELL_W * scale;
+  canvas.height = CELL_H * scale;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.scale(scale, scale);
+  drawVillager(ctx, paintsFor(look), 'south', 'stand');
+  return canvas;
+}
+
 /* ------------------------------------------------------------- bubbles */
 
 const bubbleCache = new Map<string, Texture>();

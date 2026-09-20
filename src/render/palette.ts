@@ -47,6 +47,10 @@ export const SEASON_RESPONSE: Record<number, number> = {
 export interface SeasonLook {
   /** Multiplicative tint applied to season-responsive surfaces. */
   tint: Color;
+  /** Colour foliage and grass are pulled towards. */
+  blend: Color;
+  /** How far, 0..1, before each material's own scale is applied. */
+  blendAmount: number;
   /** 0..1 how much white settles on upward faces. */
   snow: number;
   /** Foliage tint for trees and bushes. */
@@ -67,7 +71,9 @@ export interface SeasonLook {
 
 const LOOKS: Record<Season, SeasonLook> = {
   spring: {
-    tint: new Color(1.04, 1.1, 0.92),
+    tint: new Color(1.06, 1.08, 0.94),
+    blend: new Color(0x7fc25c),
+    blendAmount: 0.22,
     snow: 0,
     foliage: new Color(0x76b04a),
     skyTop: new Color(0x5f9fd4),
@@ -76,10 +82,12 @@ const LOOKS: Record<Season, SeasonLook> = {
     sun: new Color(0xfff0d4),
     ambient: new Color(0x9fb8c9),
     waterShallow: new Color(0x6fc2c9),
-    waterDeep: new Color(0x1f5a72),
+    waterDeep: new Color(0x2b6b87),
   },
   summer: {
     tint: new Color(1, 1, 1),
+    blend: new Color(0x4f8f3c),
+    blendAmount: 0.1,
     snow: 0,
     foliage: new Color(0x4f8f3c),
     skyTop: new Color(0x4b90d6),
@@ -88,10 +96,12 @@ const LOOKS: Record<Season, SeasonLook> = {
     sun: new Color(0xfff3d8),
     ambient: new Color(0xa4bccb),
     waterShallow: new Color(0x64c4cc),
-    waterDeep: new Color(0x1b5570),
+    waterDeep: new Color(0x276785),
   },
   autumn: {
-    tint: new Color(1.22, 0.96, 0.62),
+    tint: new Color(1.3, 0.96, 0.58),
+    blend: new Color(0xc2661f),
+    blendAmount: 0.62,
     snow: 0,
     foliage: new Color(0xc07a2e),
     skyTop: new Color(0x6d93bd),
@@ -100,10 +110,12 @@ const LOOKS: Record<Season, SeasonLook> = {
     sun: new Color(0xffdfae),
     ambient: new Color(0xb3a894),
     waterShallow: new Color(0x63a8ae),
-    waterDeep: new Color(0x2a5364),
+    waterDeep: new Color(0x356777),
   },
   winter: {
-    tint: new Color(0.86, 0.92, 1.0),
+    tint: new Color(0.84, 0.9, 1.0),
+    blend: new Color(0x8ba09b),
+    blendAmount: 0.45,
     snow: 1,
     foliage: new Color(0x5c7a63),
     skyTop: new Color(0x7e9ec2),
@@ -112,19 +124,26 @@ const LOOKS: Record<Season, SeasonLook> = {
     sun: new Color(0xe8f0ff),
     ambient: new Color(0xb6c6d8),
     waterShallow: new Color(0x76a8bd),
-    waterDeep: new Color(0x2c4d63),
+    waterDeep: new Color(0x3a6178),
   },
 };
 
 export const SNOW_COLOR = new Color(0xeef5fb);
 
 /** Night sky and lighting, blended in by daylight. */
+/**
+ * Night is a colour, not an absence of one.
+ *
+ * These are deliberately well off black: a cozy game's night should read as
+ * cool moonlight you can still see the village by, not as a screen you have to
+ * turn the brightness up for.
+ */
 export const NIGHT = {
-  skyTop: new Color(0x0d1530),
-  skyBottom: new Color(0x2b3b5c),
-  fog: new Color(0x1d2947),
-  ambient: new Color(0x3c4a70),
-  moon: new Color(0x9fb4e8),
+  skyTop: new Color(0x16224a),
+  skyBottom: new Color(0x3d5076),
+  fog: new Color(0x2f3f63),
+  ambient: new Color(0x6b7da6),
+  moon: new Color(0xb8c8f0),
 };
 
 /** Warm dusk/dawn colours mixed in around the light transitions. */
@@ -143,6 +162,8 @@ export function seasonLook(season: Season, progress: number, next: Season): Seas
   if (t <= 0) return a;
   return {
     tint: a.tint.clone().lerp(b.tint, t),
+    blend: a.blend.clone().lerp(b.blend, t),
+    blendAmount: a.blendAmount + (b.blendAmount - a.blendAmount) * t,
     snow: a.snow + (b.snow - a.snow) * t,
     foliage: a.foliage.clone().lerp(b.foliage, t),
     skyTop: a.skyTop.clone().lerp(b.skyTop, t),

@@ -11,7 +11,6 @@ import {
   AdditiveBlending,
   CanvasTexture,
   CircleGeometry,
-  Color,
   DoubleSide,
   Group,
   Mesh,
@@ -66,6 +65,16 @@ export class VillagerRenderer {
     this.group.name = 'villagers';
     // Origin at the feet, so positioning is just "stand here on the ground".
     this.bodyGeometry.translate(0, SPRITE_HEIGHT / 2, 0);
+
+    // Point every normal straight up.
+    //
+    // A billboard's real normal faces the camera, which means a villager with
+    // the sun behind them turns into a black silhouette every afternoon. With
+    // the normal pinned to +Y they take the same light as the grass they are
+    // standing on: bright at noon, blue at dusk, and always readable.
+    const normals = this.bodyGeometry.getAttribute('normal');
+    for (let i = 0; i < normals.count; i++) normals.setXYZ(i, 0, 1, 0);
+    normals.needsUpdate = true;
     this.shadowGeometry.rotateX(-Math.PI / 2);
 
     this.shadowMaterial = new MeshBasicMaterial({
@@ -340,4 +349,4 @@ function createBlobTexture(): CanvasTexture {
   return texture;
 }
 
-export { SPRITE_HEIGHT, Color };
+export { SPRITE_HEIGHT };

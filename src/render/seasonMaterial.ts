@@ -10,7 +10,16 @@
 import { Color, Material, MeshLambertMaterial, MeshLambertMaterialParameters } from 'three';
 
 export interface SeasonUniforms {
+  /** Multiplicative wash - shifts a surface warm or cool. */
   uSeasonTint: { value: Color };
+  /**
+   * Colour the surface is pulled *towards*. A multiply alone cannot turn a
+   * green leaf orange, so autumn needs an actual blend target.
+   */
+  uSeasonBlend: { value: Color };
+  uSeasonBlendAmount: { value: number };
+  /** Per-material authority over that blend: leaves 1, grass much less. */
+  uBlendScale: { value: number };
   uSnowAmount: { value: number };
   uSnowColor: { value: Color };
   /** Scales the whole effect per material (pines barely turn, oaks turn a lot). */
@@ -22,9 +31,12 @@ export interface SeasonUniforms {
 
 const registry: SeasonUniforms[] = [];
 
-function makeUniforms(response: number): SeasonUniforms {
+function makeUniforms(response: number, blendScale: number): SeasonUniforms {
   const uniforms: SeasonUniforms = {
     uSeasonTint: { value: new Color(1, 1, 1) },
+    uSeasonBlend: { value: new Color(1, 1, 1) },
+    uSeasonBlendAmount: { value: 0 },
+    uBlendScale: { value: blendScale },
     uSnowAmount: { value: 0 },
     uSnowColor: { value: new Color(0xeef5fb) },
     uSeasonResponse: { value: response },
@@ -46,17 +58,28 @@ export function createSeasonMaterial(
   params: MeshLambertMaterialParameters & {
     seasonResponse?: number;
     snowOnTop?: boolean;
+    /** How far this surface may be pulled towards the season's blend colour. */
+    blendScale?: number;
     /** Set when the geometry supplies a per-vertex `aSeason` attribute. */
     seasonAttribute?: boolean;
   } = {},
 ): MeshLambertMaterial {
-  const { seasonResponse = 1, snowOnTop = true, seasonAttribute = false, ...rest } = params;
+  const {
+    seasonResponse = 1,
+    snowOnTop = true,
+    blendScale = 1,
+    seasonAttribute = false,
+    ...rest
+  } = params;
   const material = new MeshLambertMaterial(rest);
   if (seasonAttribute) material.defines = { ...material.defines, USE_SEASON_ATTRIBUTE: '' };
-  const uniforms = makeUniforms(seasonResponse);
+  const uniforms = makeUniforms(seasonResponse, blendScale);
 
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uSeasonTint = uniforms.uSeasonTint;
+    shader.uniforms.uSeasonBlend = uniforms.uSeasonBlend;
+    shader.uniforms.uSeasonBlendAmount = uniforms.uSeasonBlendAmount;
+    shader.uniforms.uBlendScale = uniforms.uBlendScale;
     shader.uniforms.uSnowAmount = uniforms.uSnowAmount;
     shader.uniforms.uSnowColor = uniforms.uSnowColor;
     shader.uniforms.uSeasonResponse = uniforms.uSeasonResponse;
@@ -87,6 +110,9 @@ export function createSeasonMaterial(
         '#include <common>',
         `#include <common>
         uniform vec3 uSeasonTint;
+        uniform vec3 uSeasonBlend;
+        uniform float uSeasonBlendAmount;
+        uniform float uBlendScale;
         uniform float uSnowAmount;
         uniform vec3 uSnowColor;
         uniform float uSeasonResponse;
@@ -99,6 +125,11 @@ export function createSeasonMaterial(
         `#include <color_fragment>
         float seasonWeight = clamp(vSeason.x * uSeasonResponse, 0.0, 1.0);
         diffuseColor.rgb *= mix(vec3(1.0), uSeasonTint, seasonWeight);
+        diffuseColor.rgb = mix(
+          diffuseColor.rgb,
+          uSeasonBlend,
+          clamp(seasonWeight * uSeasonBlendAmount * uBlendScale, 0.0, 1.0)
+        );
         ${snowOnTop ? 'diffuseColor.rgb = mix(diffuseColor.rgb, uSnowColor, clamp(vSeason.y * uSnowAmount * mix(0.35, 1.0, seasonWeight), 0.0, 1.0));' : ''}
         diffuseColor.rgb *= mix(vec3(1.0), uNightTint, uNightAmount);`,
       );
@@ -106,7 +137,7 @@ export function createSeasonMaterial(
 
   // Changing onBeforeCompile means three needs a distinct program key.
   material.customProgramCacheKey = () =>
-    `season-${seasonResponse}-${snowOnTop ? 1 : 0}-${seasonAttribute ? 1 : 0}`;
+    `season-${seasonResponse}-${blendScale}-${snowOnTop ? 1 : 0}-${seasonAttribute ? 1 : 0}`;
   (material as Material & { userData: Record<string, unknown> }).userData.seasonUniforms = uniforms;
   return material;
 }
@@ -114,6 +145,8 @@ export function createSeasonMaterial(
 /** Pushes the current look into every season-aware material at once. */
 export function updateSeasonUniforms(state: {
   tint: Color;
+  blend: Color;
+  blendAmount: number;
   snow: number;
   snowColor: Color;
   nightAmount: number;
@@ -121,6 +154,8 @@ export function updateSeasonUniforms(state: {
 }): void {
   for (const uniforms of registry) {
     uniforms.uSeasonTint.value.copy(state.tint);
+    uniforms.uSeasonBlend.value.copy(state.blend);
+    uniforms.uSeasonBlendAmount.value = state.blendAmount;
     uniforms.uSnowAmount.value = state.snow;
     uniforms.uSnowColor.value.copy(state.snowColor);
     uniforms.uNightAmount.value = state.nightAmount;

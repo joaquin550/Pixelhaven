@@ -4,7 +4,7 @@
  * Lifecycle: `blueprint` (ghost, waiting on materials) -> `building` (villagers
  * are raising it, mesh reveals bottom-up) -> `complete`.
  */
-import { Occupancy, TerrainType, WATER_LEVEL, WORLD_SIZE, inBounds } from '../world/constants';
+import { Occupancy, TerrainType, WATER_LEVEL, inBounds } from '../world/constants';
 import { Terrain } from '../world/terrain';
 import { BLUEPRINT_BY_ID, BlueprintDef, PlacementRule, ResourceKind } from './blueprints';
 
@@ -309,4 +309,3 @@ export function distanceToStructure(structure: Structure, x: number, z: number):
   return (cx - x) ** 2 + (cz - z) ** 2;
 }
 
-export const MAX_WORLD_COORD = WORLD_SIZE - 1;

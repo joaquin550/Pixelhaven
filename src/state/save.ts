@@ -11,7 +11,6 @@ import { Villager, createVillager } from '../sim/villager';
 import { Structure } from '../build/structures';
 import { PropKind } from '../world/props';
 import { ResourceKind } from '../build/blueprints';
-import { WORLD_SIZE } from '../world/constants';
 import { formatDuration } from '../core/mathx';
 import { Rng } from '../core/rng';
 
@@ -434,4 +433,3 @@ function decodeUint8(encoded: string): Uint8Array {
   return decodeBytes(encoded);
 }
 
-export { WORLD_SIZE };

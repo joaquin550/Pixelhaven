@@ -132,7 +132,7 @@ export class GameScene {
     this.preview.visible = false;
     this.scene.add(this.preview);
 
-    this.rig.focusOn(haven.origin.x, haven.origin.z, 38);
+    this.rig.focusOn(haven.origin.x, haven.origin.z, 58);
     this.resize();
   }
 
@@ -290,12 +290,14 @@ export class GameScene {
     this.preview.visible = true;
     this.preview.position.set(x, y + 0.02, z);
 
-    const color = valid ? 0x7fe3a8 : 0xe8746a;
+    const color = valid ? 0x4fd48a : 0xe8564a;
     (this.previewFill.material as MeshBasicMaterial).color.setHex(color);
     (this.previewEdges.material as LineBasicMaterial).color.setHex(color);
-    // Gentle pulse so the ghost reads as "not real yet".
-    const pulse = 0.2 + Math.sin(this.elapsed * 4) * 0.06;
-    (this.previewFill.material as MeshBasicMaterial).opacity = pulse + 0.14;
+    // Gentle pulse so the ghost reads as "not real yet", but strong enough to
+    // tell green from red at a glance in bright sunlight.
+    const pulse = 0.34 + Math.sin(this.elapsed * 4) * 0.08;
+    (this.previewFill.material as MeshBasicMaterial).opacity = pulse;
+    (this.previewEdges.material as LineBasicMaterial).opacity = 1;
   }
 
   hidePreview(): void {
@@ -321,11 +323,11 @@ export class GameScene {
 function estimateHeight(def: BlueprintDef): number {
   switch (def.id) {
     case 'cottage':
-      return 2.6;
+      return 3.0;
     case 'longhouse':
-      return 3.1;
+      return 3.4;
     case 'barn':
-      return 2.5;
+      return 2.8;
     case 'workshop':
       return 2.3;
     case 'well':
