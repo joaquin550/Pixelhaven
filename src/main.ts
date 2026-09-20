@@ -513,9 +513,14 @@ function boot(): void {
   registerServiceWorker();
 }
 
+declare const __SINGLE_FILE__: boolean;
+
 function registerServiceWorker(): void {
   if (!('serviceWorker' in navigator)) return;
   if (import.meta.env.DEV) return;
+  // A standalone single-file build has no sw.js sitting next to it, and
+  // nothing to cache that is not already in the page.
+  if (typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__) return;
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)

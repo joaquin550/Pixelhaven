@@ -64,7 +64,17 @@ one-time settings:
 
 The next push then publishes to `https://<user>.github.io/<repo>/`.
 
-If you would rather not make it public:
+**One file, no hosting at all**
+
+```bash
+npm run build:single    # -> dist-single/pixel-haven.html
+```
+
+Everything — the game, three.js, the stylesheet, the icons — inlined into a
+single ~650 KB `.html` with no external requests. Put it anywhere that serves
+one page, keep it in a file share, or mail it to yourself.
+
+If you would rather not make the repository public:
 
 - **Netlify Drop** (`app.netlify.com/drop`) — drag the `dist` folder or a zip of
   it onto the page. No account, no config, instant URL, but it does not update
@@ -132,10 +142,11 @@ A few decisions worth knowing about:
 
 ```bash
 npm install
-npm run dev        # dev server, reachable on your local network
-npm run build      # typecheck, then build to dist/
-npm run preview    # serve the built site
-npm test           # unit and integration tests (Node, no browser)
+npm run dev          # dev server, reachable on your local network
+npm run build        # typecheck, then build to dist/
+npm run build:single # one self-contained dist-single/pixel-haven.html
+npm run preview      # serve the built site
+npm test             # unit and integration tests (Node, no browser)
 npm run typecheck
 ```
 
