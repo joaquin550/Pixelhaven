@@ -116,6 +116,7 @@ class Game {
     this.scene.setQuality({
       shadows: this.settings.shadows,
       weather: this.settings.weather,
+      bubbles: this.settings.showBubbles,
     });
     this.scene.resize();
   }
@@ -378,6 +379,7 @@ class Game {
   private async begin(): Promise<void> {
     this.ui.title.hide();
     this.started = true;
+    const firstTime = !this.settings.hasPlayed;
     this.settings.hasPlayed = true;
     saveSettings(this.settings);
 
@@ -387,8 +389,13 @@ class Game {
     if (this.pendingAway) {
       this.ui.away.present(this.pendingAway.summary, this.pendingAway.rows);
       this.pendingAway = null;
-    } else {
+    } else if (firstTime) {
+      // Two lines, once, and then never again.
       this.ui.toasts.show('Welcome to the haven', 'Tap anyone to see what they are up to.');
+      window.setTimeout(
+        () => this.ui.toasts.show('They manage on their own', 'Build when you feel like it. Nothing here is urgent.'),
+        5200,
+      );
     }
   }
 
@@ -411,7 +418,11 @@ class Game {
     this.audio.setVolume('music', this.settings.music);
     this.audio.setVolume('ambience', this.settings.ambience);
     this.audio.setVolume('sfx', this.settings.sfx);
-    this.scene.setQuality({ shadows: this.settings.shadows, weather: this.settings.weather });
+    this.scene.setQuality({
+      shadows: this.settings.shadows,
+      weather: this.settings.weather,
+      bubbles: this.settings.showBubbles,
+    });
   }
 
   /* ----------------------------------------------------------- lifecycle */

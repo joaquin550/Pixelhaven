@@ -1142,20 +1142,35 @@ button {
   color: var(--ink-faint);
 }
 
-/* ------------------------------------------------------ small screens */
+/* ------------------------------------------------------ narrow screens */
 
-@media (max-width: 720px) {
+/*
+ * Every iPad in portrait lands under 900px, and at that width a side panel
+ * collides with the wrapped HUD row. Below this the inspector becomes a sheet
+ * along the bottom edge instead, which is also closer to your thumbs.
+ */
+@media (max-width: 900px) {
   .inspector {
     top: auto;
-    bottom: calc(var(--pad-bottom) + 74px);
+    bottom: calc(var(--pad-bottom) + 78px);
     right: var(--pad-right);
-    left: var(--pad-left);
-    width: auto;
-    max-height: 46vh;
+    left: auto;
+    width: min(340px, calc(100vw - 24px));
+    max-height: 48vh;
+    transform: translateY(16px);
+  }
+
+  .inspector.is-open {
+    transform: translateY(0);
+  }
+
+  .toasts {
+    top: auto;
+    bottom: calc(var(--pad-bottom) + 84px);
   }
 
   .card {
-    width: 140px;
+    width: 146px;
   }
 
   .hud-resources,
@@ -1169,6 +1184,22 @@ button {
 
   .capacity {
     display: none;
+  }
+
+  .hud-ticker {
+    max-width: min(360px, 52vw);
+  }
+}
+
+/* Phone-sized windows: drop the extra chips so the top row stops wrapping. */
+@media (max-width: 560px) {
+  .meta-chip,
+  .stat-rate {
+    display: none;
+  }
+
+  .card {
+    width: 132px;
   }
 }
 

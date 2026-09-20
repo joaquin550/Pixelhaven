@@ -52,6 +52,8 @@ export interface GroundHit {
 export interface SceneQuality {
   shadows: boolean;
   weather: boolean;
+  /** Thought bubbles over villagers' heads. */
+  bubbles: boolean;
   /** Renderer pixel ratio cap. */
   maxPixelRatio: number;
 }
@@ -59,6 +61,7 @@ export interface SceneQuality {
 export const DEFAULT_QUALITY: SceneQuality = {
   shadows: true,
   weather: true,
+  bubbles: true,
   maxPixelRatio: 2,
 };
 
@@ -141,6 +144,7 @@ export class GameScene {
     this.renderer.shadowMap.enabled = this.quality.shadows;
     this.sky.sun.castShadow = this.quality.shadows;
     this.weather.points.visible = this.quality.weather;
+    this.villagers.showBubbles = this.quality.bubbles;
     this.terrain.mesh.castShadow = this.quality.shadows;
     this.resize();
     // Materials need recompiling when the shadow setting flips.

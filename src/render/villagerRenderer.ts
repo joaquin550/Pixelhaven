@@ -60,6 +60,8 @@ export class VillagerRenderer {
   private carryGeometry = new BoxBuilder().add(0, 0, 0, 0.3, 0.3, 0.3, 0xffffff, { flat: true }).build();
   private selection: Mesh;
   private selectionTime = 0;
+  /** Player setting: some people would rather just watch the village. */
+  showBubbles = true;
 
   constructor() {
     this.group.name = 'villagers';
@@ -152,7 +154,7 @@ export class VillagerRenderer {
       }
 
       // Speech bubble.
-      if (villager.bubble !== 'none' && villager.bubbleTimer > 0) {
+      if (this.showBubbles && villager.bubble !== 'none' && villager.bubbleTimer > 0) {
         if (view.lastIcon !== villager.bubble) {
           view.bubbleMaterial.map = bubbleTexture(villager.bubble);
           view.bubbleMaterial.needsUpdate = true;
