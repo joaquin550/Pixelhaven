@@ -6,7 +6,9 @@ name: Deploy
 
 on:
   push:
-    branches: [main]
+    # The feature branch is here so the game gets a URL before anything is
+    # merged. Drop it once this lands on main.
+    branches: [main, 'claude/pixel-haven-ipad-5hs6v7']
   workflow_dispatch:
 
 permissions:
@@ -32,7 +34,11 @@ jobs:
       - run: npm ci
       - run: npm run build
 
+      # `enablement` turns Pages on for the repository if it is off, so there
+      # is no settings toggle to find before the first deploy.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

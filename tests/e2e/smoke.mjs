@@ -83,29 +83,51 @@ try {
     const origin = window.pixelHaven.haven.origin;
     window.pixelHaven.scene.rig.focusOn(origin.x, origin.z, 26);
   });
-  await page.waitForTimeout(1200);
+  // Wait for the camera to actually arrive. It eases towards its target one
+  // rendered frame at a time, and a software-GL CI runner renders few of them,
+  // so a fixed sleep here is a coin flip.
+  await page
+    .waitForFunction(() => window.pixelHaven.scene.rig.cameraDistance < 30, null, { timeout: 30000 })
+    .catch(() => {});
+
   await tap('.fab', 540, 800);
-  await page.waitForTimeout(400);
+  await page.waitForTimeout(500);
   await tap('.card', 300, 700);
-  await page.waitForTimeout(300);
+  await page.waitForTimeout(400);
 
-  await page.mouse.move(560, 400);
-  await page.mouse.down();
-  await page.waitForTimeout(200);
-  await page.mouse.move(600, 420, { steps: 6 });
-  await page.waitForTimeout(300);
-  await page.mouse.up();
-  await page.waitForTimeout(600);
+  // Try a handful of spots. Not every patch of ground takes a 3x3 cottage -
+  // trees, slopes and water all refuse it - and which patch is under a given
+  // screen point depends on exactly where the camera settled.
+  const spots = [
+    [597, 417], [560, 400], [640, 440], [520, 440], [680, 400],
+    [560, 470], [660, 470], [500, 380], [700, 450], [597, 350],
+  ];
+  let placedCottage = false;
+  for (const [x, y] of spots) {
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    await page.waitForTimeout(150);
+    await page.mouse.move(x + 10, y + 8, { steps: 4 });
+    await page.waitForTimeout(150);
+    await page.mouse.up();
+    await page.waitForTimeout(450);
+    placedCottage = await page.evaluate(() =>
+      window.pixelHaven.haven.structures.structures.some((s) => s.defId === 'cottage'),
+    );
+    if (placedCottage) break;
+  }
+  assert(placedCottage, 'press, slide and release never placed a cottage anywhere');
 
-  const placed = await page.evaluate(() =>
-    window.pixelHaven.haven.structures.structures.map((s) => s.defId),
-  );
-  assert(placed.includes('cottage'), `placing a cottage did nothing (structures: ${placed})`);
-
-  // Run a stretch of in-game time at speed and check nothing falls over.
-  // Long enough for at least one full fell-a-tree-and-carry-it-home cycle.
+  // Run at speed until somebody has completed a full fell-it-and-carry-it-home
+  // cycle. Polling rather than sleeping: the simulation advances per rendered
+  // frame, so how much world time a wall-clock second buys depends on the
+  // machine.
   await page.keyboard.press('4');
-  await page.waitForTimeout(22000);
+  await page
+    .waitForFunction(() => window.pixelHaven.haven.stats.resourcesGathered > 0, null, {
+      timeout: 120000,
+    })
+    .catch(() => {});
 
   const health = await page.evaluate(() => {
     const haven = window.pixelHaven.haven;
