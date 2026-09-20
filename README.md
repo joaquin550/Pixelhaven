@@ -53,16 +53,25 @@ npm run build     # outputs a static site to dist/
 `dist/` is plain static files with relative paths, so it will run on anything
 that serves files.
 
+**GitHub Pages** is the setup this repo is wired for.
+`.github/workflows/deploy.yml` builds and publishes on every push. Two
+one-time settings:
+
+1. **Settings → General → Danger Zone → Change visibility → Make public.**
+   Pages is free on public repositories and needs a paid plan on private ones.
+2. **Settings → Pages → Source: GitHub Actions.** A workflow's token is not
+   allowed to switch this on for you.
+
+The next push then publishes to `https://<user>.github.io/<repo>/`.
+
+If you would rather not make it public:
+
 - **Netlify Drop** (`app.netlify.com/drop`) — drag the `dist` folder or a zip of
-  it onto the page. No account, no config, instant URL. The quickest way to get
-  it onto a tablet.
-- **Netlify, Vercel or Cloudflare Pages, connected to the repo** — all three
-  build private repositories on their free tiers. Build command `npm run build`,
-  publish directory `dist`.
-- **GitHub Pages** — this repo ships `.github/workflows/deploy.yml`, which
-  publishes on every push. It needs Pages switched on first under
-  **Settings → Pages → Source: GitHub Actions**. Note that Pages on a *private*
-  repository requires a paid GitHub plan; on a public repository it is free.
+  it onto the page. No account, no config, instant URL, but it does not update
+  itself when the code changes.
+- **Netlify, Vercel or Cloudflare Pages connected to the repo** — all three
+  build private repositories on their free tiers, and all three redeploy on
+  push. Build command `npm run build`, publish directory `dist`.
 
 Once it is on a URL, open it in Safari and tap **Share → Add to Home Screen**.
 It then launches full screen with no browser chrome, keeps its save, and runs
