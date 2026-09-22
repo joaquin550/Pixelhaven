@@ -7,7 +7,7 @@
  * them. Everything reads as a sentence about a person, not a stat block.
  */
 import { formatDuration } from '../core/mathx';
-import { TRAIT_BY_ID, VOCATION_LABEL } from '../sim/traits';
+import { JOBS, JOB_LABEL, TRAIT_BY_ID, VOCATION_LABEL, skillLabel } from '../sim/traits';
 import { Villager } from '../sim/villager';
 import { MIRACLES } from '../sim/haven';
 import { createPortraitCanvas } from '../render/spriteFactory';
@@ -24,6 +24,7 @@ export class Inspector {
   private taskNode: HTMLElement;
   private traitHost: HTMLElement;
   private needsHost: HTMLElement;
+  private skillHost: HTMLElement;
   private bonds: HTMLElement;
   private storyNode: HTMLElement;
   private sendButton: HTMLElement;
@@ -39,6 +40,7 @@ export class Inspector {
     this.taskNode = el('div', { class: 'inspector-task', text: '' });
     this.traitHost = el('div', { class: 'trait-row' });
     this.needsHost = el('div', { class: 'needs' });
+    this.skillHost = el('div', { class: 'skills' });
     this.bonds = el('div', { class: 'bonds' });
     this.storyNode = el('div', { class: 'inspector-story' });
 
@@ -88,6 +90,7 @@ export class Inspector {
       this.taskNode,
       this.traitHost,
       this.needsHost,
+      this.skillHost,
       this.bonds,
       this.storyNode,
       el('div', { class: 'panel-actions' }, this.sendButton, this.feedButton, this.focusButton),
@@ -117,6 +120,7 @@ export class Inspector {
     toggleClass(this.feedButton, 'is-locked', state.haven.favor < meal.cost);
     toggleClass(this.sendButton, 'is-active', state.mode === 'direct');
 
+    this.renderSkills(villager);
     this.renderBonds(state, villager);
     setText(this.storyNode, describeStory(villager));
   }
@@ -128,7 +132,7 @@ export class Inspector {
     const days = Math.floor(villager.age) + 1;
     setText(
       this.roleNode,
-      `${VOCATION_LABEL[villager.vocation]} · ${days} ${days === 1 ? 'day' : 'days'} here`,
+      `${VOCATION_LABEL[villager.calling]} · ${days} ${days === 1 ? 'day' : 'days'} here`,
     );
 
     this.traitHost.innerHTML = '';
@@ -153,6 +157,34 @@ export class Inspector {
     bar.fill.style.width = `${clamped.toFixed(0)}%`;
     toggleClass(bar.fill, 'is-low', clamped < 28);
     setText(bar.label, `${Math.round(clamped)}`);
+  }
+
+  /** Only what they have actually practised, best first. */
+  private renderSkills(villager: Villager): void {
+    const earned = JOBS.map((job) => ({ job, level: villager.skills[job] }))
+      .filter((entry) => entry.level >= 3)
+      .sort((a, b) => b.level - a.level)
+      .slice(0, 3);
+
+    this.skillHost.innerHTML = '';
+    if (earned.length === 0) {
+      this.skillHost.append(el('div', { class: 'bond-empty', text: 'Still finding their feet.' }));
+      return;
+    }
+
+    for (const entry of earned) {
+      const fill = el('div', { class: 'skill-fill' });
+      fill.style.width = `${Math.round(entry.level)}%`;
+      this.skillHost.append(
+        el(
+          'div',
+          { class: 'skill' },
+          el('span', { class: 'skill-name', text: JOB_LABEL[entry.job] }),
+          el('div', { class: 'skill-track' }, fill),
+          el('span', { class: 'skill-level', text: skillLabel(entry.level) }),
+        ),
+      );
+    }
   }
 
   private renderBonds(state: UiState, villager: Villager): void {

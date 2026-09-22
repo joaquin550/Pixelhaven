@@ -69,12 +69,13 @@ export class Haven implements ColonyView {
   readonly events = new Emitter<HavenEvents>();
   readonly rng: Rng;
 
-  resources: Record<ResourceKind, number> = { wood: 40, stone: 20, food: 35 };
+  resources: Record<ResourceKind, number> = { wood: 40, stone: 20, food: 35, tools: 0 };
   favor = 6;
   villagers: Villager[] = [];
-  demand: ResourceDemand = { wood: 1, stone: 1, food: 1 };
+  demand: ResourceDemand = { wood: 1, stone: 1, food: 1, tools: 1 };
   charm = 0;
   buildSpeed = 1;
+  toolEdge = 1;
   capacity = 400;
   beds = 0;
 
@@ -101,6 +102,8 @@ export class Haven implements ColonyView {
   private favorAccumulator = 0;
   /** Stops the "storehouse is full" nudge repeating every few seconds. */
   private fullStoreCooldown = 0;
+  /** Footfall fades on a timer rather than every tick - it is a whole-island pass. */
+  private wearTimer = 0;
   private lastDayLogged = 1;
 
   constructor(seed: string, options: { populate?: boolean; blank?: boolean } = {}) {
@@ -196,6 +199,7 @@ export class Haven implements ColonyView {
     }
 
     this.updateFarms(dt);
+    this.updateWear(dt);
     this.props.update(dt);
     this.updateFavor(dt, snapshot);
     this.updateStructureAges(dt);
@@ -231,22 +235,30 @@ export class Haven implements ColonyView {
     this.capacity = storage;
     this.beds = beds;
     this.buildSpeed = 1 + workshops * 0.35;
+    // A stocked toolshed is felt across every job, and caps out quickly so it
+    // never becomes the only thing worth doing.
+    this.toolEdge = 1 + Math.min(0.3, (this.resources.tools || 0) / 90);
 
     // Demand: what should villagers bother gathering right now?
     const pop = Math.max(1, this.villagers.length);
     let woodNeed = 14;
     let stoneNeed = 8;
+    let toolNeed = 0;
     for (const structure of this.structures.pending) {
       const outstanding = this.structures.outstanding(structure);
       woodNeed += outstanding.wood ?? 0;
       stoneNeed += outstanding.stone ?? 0;
+      toolNeed += outstanding.tools ?? 0;
     }
     const foodTarget = 18 + pop * 13;
+    // Keep a working set of tools on the shelf plus whatever is owed to sites.
+    const toolTarget = workshops > 0 ? 12 + pop * 1.5 + toolNeed * 2 : toolNeed;
 
     this.demand = {
       wood: Math.max(0.45, clamp01((woodNeed * 1.6 - this.resources.wood) / Math.max(10, woodNeed * 1.6))),
       stone: Math.max(0.4, clamp01((stoneNeed * 1.6 - this.resources.stone) / Math.max(8, stoneNeed * 1.6))),
       food: Math.max(0.5, clamp01((foodTarget - this.resources.food) / foodTarget)),
+      tools: toolTarget <= 0 ? 0 : clamp01((toolTarget - this.resources.tools) / toolTarget),
     };
   }
 
@@ -258,6 +270,14 @@ export class Haven implements ColonyView {
         farm.crop = clamp01(farm.crop + dt * 0.0026);
       }
     }
+  }
+
+  /** Grass creeping back over routes that have fallen out of use. */
+  private updateWear(dt: number): void {
+    this.wearTimer += dt;
+    if (this.wearTimer < 0.5) return;
+    this.terrain.fadeWear(this.wearTimer);
+    this.wearTimer = 0;
   }
 
   private updateStructureAges(dt: number): void {
@@ -294,6 +314,19 @@ export class Haven implements ColonyView {
     const avgMood = this.averageMood;
     const moodFactor = 0.4 + (avgMood / 100) * 1.2;
     return (1.1 + this.villagers.length * 0.18 + structureFavor) * moodFactor;
+  }
+
+  /**
+   * Everything on the shelves, which is what the storage cap measures.
+   *
+   * Tolerates a missing line. A resources object assembled elsewhere - an old
+   * save, the debug handle, a test - that omits one kind would otherwise turn
+   * this into NaN, and from there every total, every demand figure and every
+   * villager's decisions quietly become NaN too.
+   */
+  get totalStored(): number {
+    const r = this.resources;
+    return (r.wood || 0) + (r.stone || 0) + (r.food || 0) + (r.tools || 0);
   }
 
   get averageMood(): number {
@@ -393,8 +426,7 @@ export class Haven implements ColonyView {
   private checkStorage(dt: number): void {
     this.fullStoreCooldown = Math.max(0, this.fullStoreCooldown - dt);
     if (this.fullStoreCooldown > 0) return;
-    const used = this.resources.wood + this.resources.stone + this.resources.food;
-    if (used < this.capacity * 0.96) return;
+    if (this.totalStored < this.capacity * 0.96) return;
     this.fullStoreCooldown = 240;
     this.log('The storehouse is full. Time to mark out something worth building.', 'warn');
   }
@@ -445,17 +477,17 @@ export class Haven implements ColonyView {
   }
 
   store(resource: ResourceKind, amount: number): number {
-    const used = this.resources.wood + this.resources.stone + this.resources.food;
-    const room = Math.max(0, this.capacity - used);
+    const room = Math.max(0, this.capacity - this.totalStored);
     const stored = Math.min(amount, room);
-    this.resources[resource] += stored;
+    this.resources[resource] = (this.resources[resource] || 0) + stored;
     this.stats.resourcesGathered += stored;
     return stored;
   }
 
   take(resource: ResourceKind, amount: number): number {
-    const taken = Math.min(amount, this.resources[resource]);
-    this.resources[resource] -= taken;
+    const held = this.resources[resource] || 0;
+    const taken = Math.min(amount, held);
+    this.resources[resource] = held - taken;
     return taken;
   }
 

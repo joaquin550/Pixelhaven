@@ -104,7 +104,7 @@ export class StructureRegistry {
       width: def.width,
       depth: def.depth,
       state: 'blueprint',
-      delivered: { wood: 0, stone: 0, food: 0 },
+      delivered: { wood: 0, stone: 0, food: 0, tools: 0 },
       progress: 0,
       work: def.work,
       crop: 0,
@@ -145,7 +145,7 @@ export class StructureRegistry {
     this.revision++;
     // Full refund of whatever already made it to the site - no punishment for
     // changing your mind about where the bridge goes.
-    if (!def) return { wood: 0, stone: 0, food: 0 };
+    if (!def) return { wood: 0, stone: 0, food: 0, tools: 0 };
     return { ...structure.delivered };
   }
 
@@ -154,7 +154,7 @@ export class StructureRegistry {
     const def = BLUEPRINT_BY_ID.get(structure.defId);
     if (!def) return {};
     const need: Partial<Record<ResourceKind, number>> = {};
-    for (const key of ['wood', 'stone', 'food'] as ResourceKind[]) {
+    for (const key of ['wood', 'stone', 'food', 'tools'] as ResourceKind[]) {
       const required = def.cost[key] ?? 0;
       const remaining = required - structure.delivered[key];
       if (remaining > 0) need[key] = remaining;

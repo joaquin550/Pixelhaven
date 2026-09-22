@@ -103,6 +103,18 @@ export function combineTraits(traitIds: readonly string[]): TraitModifiers {
   return result;
 }
 
+/** The five things there are to get good at. */
+export const JOBS = ['forestry', 'masonry', 'farming', 'building', 'foraging'] as const;
+export type Job = (typeof JOBS)[number];
+
+export const JOB_LABEL: Record<Job, string> = {
+  forestry: 'Forestry',
+  masonry: 'Stonework',
+  farming: 'Farming',
+  building: 'Building',
+  foraging: 'Foraging',
+};
+
 /** The job a villager gravitates towards, inferred from their trait mix. */
 export type Vocation = 'forester' | 'mason' | 'farmer' | 'builder' | 'forager' | 'wanderer';
 
@@ -114,6 +126,23 @@ export const VOCATION_LABEL: Record<Vocation, string> = {
   forager: 'Forager',
   wanderer: 'Wanderer',
 };
+
+export const JOB_VOCATION: Record<Job, Vocation> = {
+  forestry: 'forester',
+  masonry: 'mason',
+  farming: 'farmer',
+  building: 'builder',
+  foraging: 'forager',
+};
+
+/** How a level of proficiency is described in the inspector. */
+export function skillLabel(level: number): string {
+  if (level >= 85) return 'masterful';
+  if (level >= 62) return 'expert';
+  if (level >= 38) return 'practised';
+  if (level >= 18) return 'competent';
+  return 'learning';
+}
 
 export function inferVocation(mods: TraitModifiers): Vocation {
   const scores: [Vocation, number][] = [

@@ -35,6 +35,8 @@ export interface SavedVillager {
   homeId: number;
   friends: [number, number][];
   stats: [number, number, number, number, number];
+  /** Skills in JOBS order: forestry, masonry, farming, building, foraging. */
+  skills: [number, number, number, number, number];
   carry?: [ResourceKind, number];
 }
 
@@ -45,7 +47,8 @@ export interface SavedStructure {
   z: number;
   y: number;
   state: Structure['state'];
-  delivered: [number, number, number];
+  /** Wood, stone, food, tools. Tools were added later, so it may be absent. */
+  delivered: [number, number, number, number?];
   progress: number;
   crop: number;
   residents: number[];
@@ -132,7 +135,7 @@ export function serializeHaven(haven: Haven): SaveData {
       z: s.z,
       y: s.y,
       state: s.state,
-      delivered: [s.delivered.wood, s.delivered.stone, s.delivered.food],
+      delivered: [s.delivered.wood, s.delivered.stone, s.delivered.food, s.delivered.tools],
       progress: round(s.progress, 2),
       crop: round(s.crop, 3),
       residents: [...s.residents],
@@ -170,6 +173,13 @@ function serializeVillager(v: Villager): SavedVillager {
     homeId: v.homeId,
     friends: Array.from(v.friendships.entries()).map(([id, value]) => [id, Math.round(value)]),
     stats: [v.stats.gathered, Math.round(v.stats.built), v.stats.chats, v.stats.mealsEaten, v.stats.stepsTaken],
+    skills: [
+      round(v.skills.forestry, 1),
+      round(v.skills.masonry, 1),
+      round(v.skills.farming, 1),
+      round(v.skills.building, 1),
+      round(v.skills.foraging, 1),
+    ],
     ...(v.carry ? { carry: [v.carry.resource, v.carry.amount] as [ResourceKind, number] } : {}),
   };
 }
@@ -208,7 +218,12 @@ export function deserializeHaven(data: SaveData): Haven {
       width: 1,
       depth: 1,
       state: saved.state,
-      delivered: { wood: saved.delivered[0], stone: saved.delivered[1], food: saved.delivered[2] },
+      delivered: {
+        wood: saved.delivered[0],
+        stone: saved.delivered[1],
+        food: saved.delivered[2],
+        tools: saved.delivered[3] ?? 0,
+      },
       progress: saved.progress,
       work: 1,
       crop: saved.crop,
@@ -252,12 +267,24 @@ export function deserializeHaven(data: SaveData): Haven {
       mealsEaten: saved.stats[3],
       stepsTaken: saved.stats[4],
     };
+    // `skills` postdates the first saves, so an older file just starts everyone
+    // back at the beginning rather than failing to load.
+    if (saved.skills) {
+      villager.skills = {
+        forestry: saved.skills[0] ?? 0,
+        masonry: saved.skills[1] ?? 0,
+        farming: saved.skills[2] ?? 0,
+        building: saved.skills[3] ?? 0,
+        foraging: saved.skills[4] ?? 0,
+      };
+    }
     if (saved.carry) villager.carry = { resource: saved.carry[0], amount: saved.carry[1] };
     haven.villagers.push(villager);
   }
 
   haven.clock.elapsed = data.elapsed;
-  haven.resources = { ...data.resources };
+  // An older save has no tools line; start that shelf empty rather than NaN.
+  haven.resources = { ...data.resources, tools: data.resources.tools ?? 0 };
   haven.favor = data.favor;
   haven.stats = { ...data.stats };
   haven.milestonesHit = new Set(data.milestones);
@@ -363,6 +390,7 @@ export function applyOfflineProgress(haven: Haven, savedAt: number): AwayReport 
     wood: Math.max(0, Math.round(haven.resources.wood - result.before.wood)),
     stone: Math.max(0, Math.round(haven.resources.stone - result.before.stone)),
     food: Math.max(0, Math.round(haven.resources.food - result.before.food)),
+    tools: Math.max(0, Math.round(haven.resources.tools - result.before.tools)),
   };
   const newVillagers = haven.villagers.length - result.beforePop;
   const structuresFinished = haven.stats.structuresBuilt - beforeStructures;
@@ -387,6 +415,7 @@ function describeAway(
   if (gained.wood) parts.push(`${gained.wood} wood`);
   if (gained.stone) parts.push(`${gained.stone} stone`);
   if (gained.food) parts.push(`${gained.food} food`);
+  if (gained.tools) parts.push(`${gained.tools} tools`);
   if (structures) parts.push(`${structures} building${structures > 1 ? 's' : ''} finished`);
   if (newVillagers > 0) parts.push(`${newVillagers} new face${newVillagers > 1 ? 's' : ''}`);
 

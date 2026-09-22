@@ -38,6 +38,9 @@ import { StructureRenderer } from './structureMeshes';
 import { VillagerRenderer } from './villagerRenderer';
 import { SkyRenderer } from './sky';
 import { WeatherRenderer } from './weather';
+import { TrailRenderer } from './trails';
+import { SmokeRenderer } from './smoke';
+import { GroundDetailRenderer } from './groundDetail';
 
 export interface GroundHit {
   /** Integer cell coordinates. */
@@ -76,6 +79,9 @@ export class GameScene {
   readonly villagers: VillagerRenderer;
   readonly sky: SkyRenderer;
   readonly weather: WeatherRenderer;
+  readonly trails: TrailRenderer;
+  readonly smoke: SmokeRenderer;
+  readonly groundDetail: GroundDetailRenderer;
 
   private raycaster = new Raycaster();
   private preview: Group;
@@ -120,13 +126,19 @@ export class GameScene {
     this.villagers = new VillagerRenderer();
     this.sky = new SkyRenderer(this.scene, haven.seed);
     this.weather = new WeatherRenderer(haven.seed);
+    this.trails = new TrailRenderer(haven.terrain);
+    this.smoke = new SmokeRenderer(haven.structures);
+    this.groundDetail = new GroundDetailRenderer(haven.terrain);
 
     this.scene.add(this.terrain.mesh);
     this.scene.add(this.water.mesh);
+    this.scene.add(this.trails.mesh);
+    this.scene.add(this.groundDetail.mesh);
     this.scene.add(this.props.group);
     this.scene.add(this.structures.group);
     this.scene.add(this.villagers.group);
     this.scene.add(this.weather.points);
+    this.scene.add(this.smoke.mesh);
 
     const { group, fill, edges } = createPreview();
     this.preview = group;
@@ -189,6 +201,9 @@ export class GameScene {
     });
 
     this.water.update(this.elapsed, skyState.look, 1 - skyState.daylight);
+    this.trails.update(dt);
+    this.groundDetail.update(dt);
+    this.smoke.update(dt, 1 - skyState.daylight, Math.sin(this.elapsed * 0.07) * 0.6 + 0.5);
     this.structures.update(this.elapsed, 1 - skyState.daylight);
     this.villagers.update(this.haven.villagers, this.rig.orbitAngle, dt, selectedVillagerId);
     if (this.quality.weather) {
@@ -317,6 +332,9 @@ export class GameScene {
     this.villagers.dispose();
     this.sky.dispose();
     this.weather.dispose();
+    this.trails.dispose();
+    this.smoke.dispose();
+    this.groundDetail.dispose();
     this.previewFill.geometry.dispose();
     this.previewEdges.geometry.dispose();
     this.renderer.dispose();

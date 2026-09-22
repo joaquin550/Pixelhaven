@@ -6,10 +6,18 @@
  */
 import { Rng } from '../core/rng';
 import { clamp, clamp01, dampAngle } from '../core/mathx';
-import { Occupancy } from '../world/constants';
+import { Occupancy, TRAIL_SPEED_BONUS, WEAR_PER_STEP } from '../world/constants';
 import type { PathNode } from '../world/navgrid';
 import type { ResourceKind } from '../build/blueprints';
-import { TraitModifiers, Vocation, combineTraits, inferVocation } from './traits';
+import {
+  JOBS,
+  JOB_VOCATION,
+  Job,
+  TraitModifiers,
+  Vocation,
+  combineTraits,
+  inferVocation,
+} from './traits';
 import type { SimContext } from './context';
 
 export type TaskKind =
@@ -21,6 +29,7 @@ export type TaskKind =
   | 'tend'
   | 'harvest'
   | 'fish'
+  | 'craft'
   | 'haul'
   | 'build'
   | 'eat'
@@ -117,6 +126,16 @@ export class Villager {
   animTime = 0;
   bubble: BubbleIcon = 'none';
   bubbleTimer = 0;
+  /**
+   * Hands-on proficiency per job, 0..100.
+   *
+   * Traits say what someone is inclined towards; skill is what they have
+   * actually done. A villager who has felled a hundred trees is better at it
+   * than one who merely has the knack, and after a few in-game weeks the
+   * village has specialists nobody assigned.
+   */
+  skills: Record<Job, number> = { forestry: 0, masonry: 0, farming: 0, building: 0, foraging: 0 };
+
   /** Player-granted speed boost, in seconds. */
   boost = 0;
   /** Short-lived mood lift from gifts and good events. */
@@ -154,19 +173,49 @@ export class Villager {
     return Math.max(1, Math.round(6 * this.mods.carry));
   }
 
-  /** Current walking speed in cells per second. */
-  speed(paved: boolean): number {
+  /**
+   * Current walking speed in cells per second.
+   * `footing` is 0 on open ground and 1 on a cobbled path or a fully worn trail.
+   */
+  speed(footing: number): number {
     const boostFactor = this.boost > 0 ? 1.45 : 1;
     const tiredFactor = 0.7 + 0.3 * clamp01(this.energy / 70);
-    return BASE_MOVE_SPEED * this.mods.moveSpeed * boostFactor * tiredFactor * (paved ? 1.22 : 1);
+    const ground = 1 + clamp01(footing) * TRAIL_SPEED_BONUS;
+    return BASE_MOVE_SPEED * this.mods.moveSpeed * boostFactor * tiredFactor * ground;
   }
 
-  /** Per-job work multiplier, including player boost and tiredness. */
-  workRate(job: 'forestry' | 'masonry' | 'farming' | 'building' | 'foraging' | 'generic'): number {
+  /** Per-job work multiplier, including skill, player boost and tiredness. */
+  workRate(job: Job | 'generic'): number {
     const jobMod = job === 'generic' ? 1 : this.mods[job];
+    const practice = job === 'generic' ? 1 : 1 + (this.skills[job] / 100) * 0.55;
     const boostFactor = this.boost > 0 ? 1.6 : 1;
     const tiredFactor = 0.55 + 0.45 * clamp01(this.energy / 60);
-    return this.mods.workSpeed * jobMod * boostFactor * tiredFactor;
+    return this.mods.workSpeed * jobMod * practice * boostFactor * tiredFactor;
+  }
+
+  /**
+   * Records practice at a job. Improvement slows as proficiency rises, so the
+   * first week is transformative and the fiftieth is a refinement.
+   */
+  practise(job: Job, amount: number): void {
+    const current = this.skills[job];
+    this.skills[job] = clamp(current + amount * (1 - current / 100) * 1.35, 0, 100);
+  }
+
+  /** The job this villager has actually become good at, if any. */
+  get bestSkill(): { job: Job; level: number } | null {
+    let best: { job: Job; level: number } | null = null;
+    for (const job of JOBS) {
+      if (!best || this.skills[job] > best.level) best = { job, level: this.skills[job] };
+    }
+    return best && best.level >= 12 ? best : null;
+  }
+
+  /** Inclination when untested, earned specialism once there is a track record. */
+  get calling(): Vocation {
+    const best = this.bestSkill;
+    if (!best) return this.vocation;
+    return JOB_VOCATION[best.job];
   }
 
   say(icon: BubbleIcon, seconds = 3): void {
@@ -203,14 +252,20 @@ export class Villager {
     const dz = targetZ - this.z;
     const distance = Math.hypot(dx, dz);
 
+    // Laid paths give full footing; worn grass gives however much of it the
+    // village has walked in so far.
     const paved = ctx.terrain.hasOccupancy(node.x, node.z, Occupancy.Walkable);
-    const step = this.speed(paved) * ctx.dt;
+    const footing = paved ? 1 : ctx.terrain.wearAt(node.x, node.z);
+    const step = this.speed(footing) * ctx.dt;
 
     if (distance <= step || distance < 0.001) {
       this.x = targetX;
       this.z = targetZ;
       this.pathIndex++;
       this.stats.stepsTaken++;
+      // Leave a mark. Only on open ground: cobbles and bridges do not wear,
+      // and a dozing villager is not treading anything down.
+      if (!paved) ctx.terrain.addWear(node.x, node.z, WEAR_PER_STEP);
       return this.pathComplete;
     }
 

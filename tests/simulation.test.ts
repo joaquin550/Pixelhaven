@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Haven } from '../src/sim/haven';
 import { BLUEPRINT_BY_ID } from '../src/build/blueprints';
-import { WATER_LEVEL, WORLD_SIZE } from '../src/world/constants';
+import { TRAIL_THRESHOLD, TerrainType, WATER_LEVEL, WORLD_SIZE } from '../src/world/constants';
 
 function runFor(haven: Haven, seconds: number, step = 1 / 20): void {
   for (let t = 0; t < seconds; t += step) haven.update(step);
@@ -92,6 +92,171 @@ describe('villagers', () => {
         }
       }
     }
+  });
+});
+
+describe('the resource ledger', () => {
+  it('survives a resources object with a line missing', () => {
+    const haven = new Haven('partial');
+    // Older saves and anything set from the console can be short a key. One
+    // missing line used to turn every total in the game into NaN.
+    (haven as unknown as { resources: Record<string, number> }).resources = {
+      wood: 10,
+      stone: 5,
+      food: 5,
+    };
+    haven.update(1);
+    expect(Number.isFinite(haven.totalStored)).toBe(true);
+    expect(Number.isFinite(haven.toolEdge)).toBe(true);
+    haven.store('wood', 4);
+    expect(Number.isFinite(haven.stats.resourcesGathered)).toBe(true);
+
+    // And writing to the absent line heals it rather than producing NaN.
+    haven.store('tools', 3);
+    expect(haven.resources.tools).toBe(3);
+
+    // The whole simulation keeps running on it.
+    runFor(haven, 240);
+    expect(Number.isFinite(haven.totalStored)).toBe(true);
+    for (const v of haven.villagers) expect(Number.isFinite(v.x)).toBe(true);
+  });
+});
+
+describe('the tool economy', () => {
+  it('crafts tools at a workshop and spends the raw materials for them', () => {
+    const haven = new Haven('toolmaking');
+    // Comfortably under the storage cap, or finished tools have nowhere to go.
+    haven.resources = { wood: 150, stone: 120, food: 60, tools: 0 };
+
+    const def = BLUEPRINT_BY_ID.get('workshop')!;
+    let workshop = null;
+    for (let radius = 0; radius < 18 && !workshop; radius++) {
+      for (let dz = -radius; dz <= radius && !workshop; dz++) {
+        for (let dx = -radius; dx <= radius && !workshop; dx++) {
+          workshop = haven.placeBlueprint(def, haven.origin.x + dx, haven.origin.z + dz);
+        }
+      }
+    }
+    expect(workshop).not.toBeNull();
+    haven.structures.deliver(workshop!, 'wood', 999);
+    haven.structures.deliver(workshop!, 'stone', 999);
+    haven.structures.applyWork(workshop!, 99999);
+    haven.nav.rebuild();
+
+    // Strip the island bare, and turn the soil to bare rock so the forest
+    // cannot reseed itself either. From here the only thing that can move wood
+    // and stone is the workshop consuming them.
+    haven.props.props.length = 0;
+    haven.props.revision++;
+    haven.terrain.types.fill(TerrainType.Stone);
+    haven.terrain.occupancy.fill(0);
+    haven.nav.rebuild();
+
+    const rawBefore = haven.resources.wood + haven.resources.stone;
+    runFor(haven, 1500);
+
+    expect(haven.resources.tools).toBeGreaterThan(0);
+    expect(haven.resources.wood + haven.resources.stone).toBeLessThan(rawBefore);
+    // Three tools for every six units of raw material.
+    const consumed = rawBefore - (haven.resources.wood + haven.resources.stone);
+    expect(haven.resources.tools).toBeGreaterThan(consumed * 0.3);
+  });
+
+  it('leaves tools alone when there is nowhere to make them', () => {
+    const haven = new Haven('no-workshop');
+    haven.resources = { wood: 150, stone: 120, food: 60, tools: 0 };
+    runFor(haven, 900);
+    expect(haven.resources.tools).toBe(0);
+  });
+
+  it('makes a stocked toolshed speed everyone up, within limits', () => {
+    const haven = new Haven('tooledge', { populate: false });
+    expect(haven.toolEdge).toBe(1);
+    haven.resources.tools = 45;
+    haven.update(1);
+    expect(haven.toolEdge).toBeGreaterThan(1.1);
+    haven.resources.tools = 10000;
+    haven.update(1);
+    expect(haven.toolEdge).toBeLessThanOrEqual(1.3);
+  });
+});
+
+describe('skills', () => {
+  it('turns villagers into specialists through practice alone', () => {
+    const haven = new Haven('specialists');
+    for (const v of haven.villagers) {
+      expect(v.bestSkill).toBeNull();
+    }
+
+    runFor(haven, 3000, 1 / 15);
+
+    const specialists = haven.villagers.filter((v) => v.bestSkill !== null);
+    expect(specialists.length).toBeGreaterThan(0);
+    for (const v of haven.villagers) {
+      for (const level of Object.values(v.skills)) {
+        expect(level).toBeGreaterThanOrEqual(0);
+        expect(level).toBeLessThanOrEqual(100);
+      }
+    }
+  });
+
+  it('makes a practised villager faster than a novice with the same traits', () => {
+    const haven = new Haven('practice', { populate: false });
+    const novice = haven.addVillager(haven.origin.x, haven.origin.z, 'Novice', ['diligent', 'sociable']);
+    const veteran = haven.addVillager(haven.origin.x, haven.origin.z, 'Veteran', ['diligent', 'sociable']);
+    veteran.skills.forestry = 100;
+
+    expect(veteran.workRate('forestry')).toBeGreaterThan(novice.workRate('forestry'));
+    // And no better at anything they have not done.
+    expect(veteran.workRate('masonry')).toBeCloseTo(novice.workRate('masonry'), 5);
+  });
+
+  it('improves fast at first and slowly once expert', () => {
+    const haven = new Haven('curve', { populate: false });
+    const v = haven.addVillager(haven.origin.x, haven.origin.z, 'Learner');
+
+    v.practise('forestry', 1);
+    const firstGain = v.skills.forestry;
+
+    v.skills.forestry = 90;
+    v.practise('forestry', 1);
+    const lateGain = v.skills.forestry - 90;
+
+    expect(firstGain).toBeGreaterThan(lateGain * 5);
+  });
+});
+
+describe('desire paths', () => {
+  it('wears trails along the routes villagers actually use', () => {
+    const haven = new Haven('trails');
+    runFor(haven, 2400, 1 / 15);
+
+    let worn = 0;
+    for (let i = 0; i < WORLD_SIZE * WORLD_SIZE; i++) {
+      if (haven.terrain.wear[i] >= TRAIL_THRESHOLD) worn++;
+    }
+    expect(worn).toBeGreaterThan(5);
+    // Routes, not a carpet: if everywhere is a path then nowhere is.
+    expect(worn).toBeLessThan(WORLD_SIZE * WORLD_SIZE * 0.06);
+  });
+
+  it('never wears a trail across water', () => {
+    const haven = new Haven('trails-water');
+    runFor(haven, 900, 1 / 15);
+    for (let z = 0; z < WORLD_SIZE; z++) {
+      for (let x = 0; x < WORLD_SIZE; x++) {
+        if (!haven.terrain.isLand(x, z)) expect(haven.terrain.wearAt(x, z)).toBe(0);
+      }
+    }
+  });
+
+  it('lets the grass grow back over ground nobody uses', () => {
+    const haven = new Haven('regrow', { populate: false });
+    haven.terrain.addWear(10, 10, 1);
+    expect(haven.terrain.isTrail(10, 10)).toBe(true);
+    // A trail takes roughly twenty minutes of disuse to disappear.
+    haven.terrain.fadeWear(30 * 60);
+    expect(haven.terrain.isTrail(10, 10)).toBe(false);
   });
 });
 

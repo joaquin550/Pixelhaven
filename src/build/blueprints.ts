@@ -6,7 +6,12 @@
  * Haven: you suggest, they decide when.
  */
 
-export type ResourceKind = 'wood' | 'stone' | 'food';
+/**
+ * Wood, stone and food are gathered. Tools are made: the Workshop turns raw
+ * materials into them, the better buildings need them, and a well-stocked
+ * toolshed makes everybody quicker at everything.
+ */
+export type ResourceKind = 'wood' | 'stone' | 'food' | 'tools';
 
 export type BlueprintCategory = 'home' | 'food' | 'craft' | 'comfort' | 'paths';
 
@@ -68,7 +73,7 @@ export const BLUEPRINTS: BlueprintDef[] = [
     category: 'home',
     width: 4,
     depth: 4,
-    cost: { wood: 48, stone: 20 },
+    cost: { wood: 48, stone: 20, tools: 4 },
     work: 72,
     placement: 'land',
     beds: 5,
@@ -146,7 +151,7 @@ export const BLUEPRINTS: BlueprintDef[] = [
   {
     id: 'workshop',
     name: 'Workshop',
-    blurb: 'Sawdust, good tools, and everybody building a little faster.',
+    blurb: 'Where tools get made. Everything else gets easier once it stands.',
     category: 'craft',
     width: 3,
     depth: 3,
@@ -164,7 +169,7 @@ export const BLUEPRINTS: BlueprintDef[] = [
     category: 'comfort',
     width: 2,
     depth: 2,
-    cost: { stone: 40, wood: 8 },
+    cost: { stone: 40, wood: 8, tools: 5 },
     work: 54,
     placement: 'land',
     charm: 8,
@@ -221,5 +226,6 @@ export function blueprintCostText(def: BlueprintDef): string {
   if (def.cost.wood) parts.push(`${def.cost.wood} wood`);
   if (def.cost.stone) parts.push(`${def.cost.stone} stone`);
   if (def.cost.food) parts.push(`${def.cost.food} food`);
+  if (def.cost.tools) parts.push(`${def.cost.tools} tools`);
   return parts.join(' · ') || 'free';
 }

@@ -13,8 +13,10 @@ import { clamp, clamp01, smoothstep } from '../core/mathx';
 import {
   MAX_HEIGHT,
   Occupancy,
+  TRAIL_THRESHOLD,
   TerrainType,
   WATER_LEVEL,
+  WEAR_DECAY,
   WORLD_SIZE,
   inBounds,
   index,
@@ -28,6 +30,15 @@ export class Terrain {
   readonly occupancy: Uint8Array;
   /** Soil fertility 0..1, drives where crops and forests thrive. */
   readonly fertility: Float32Array;
+  /**
+   * Footfall per cell, 0..1.
+   *
+   * Every step a villager takes adds a little; it fades over time. Where a
+   * route is walked often enough the grass gives up and a trail appears, which
+   * is then quicker to walk, which makes it get walked more. Nobody plans the
+   * paths through a village and nobody plans these either.
+   */
+  readonly wear: Float32Array;
   /** Bumped whenever geometry changes so the renderer knows to re-mesh. */
   revision = 0;
 
@@ -38,6 +49,7 @@ export class Terrain {
     this.types = new Uint8Array(cells);
     this.occupancy = new Uint8Array(cells);
     this.fertility = new Float32Array(cells);
+    this.wear = new Float32Array(cells);
     generateIsland(this);
   }
 
@@ -61,6 +73,34 @@ export class Terrain {
     if (!inBounds(x, z)) return;
     this.heights[index(x, z)] = clamp(Math.round(height), 0, MAX_HEIGHT);
     this.revision++;
+  }
+
+  /** Records a footstep. Returns true if this crossed the visible threshold. */
+  addWear(x: number, z: number, amount: number): boolean {
+    if (!inBounds(x, z)) return false;
+    const i = index(x, z);
+    const before = this.wear[i];
+    this.wear[i] = Math.min(1, before + amount);
+    return before < TRAIL_THRESHOLD && this.wear[i] >= TRAIL_THRESHOLD;
+  }
+
+  wearAt(x: number, z: number): number {
+    if (!inBounds(x, z)) return 0;
+    return this.wear[index(x, z)];
+  }
+
+  /** True once a cell is worn enough to walk quicker across. */
+  isTrail(x: number, z: number): boolean {
+    return this.wearAt(x, z) >= TRAIL_THRESHOLD;
+  }
+
+  /** Grass grows back over routes nobody uses any more. */
+  fadeWear(dt: number): void {
+    const decay = WEAR_DECAY * dt;
+    const { wear } = this;
+    for (let i = 0; i < wear.length; i++) {
+      if (wear[i] > 0) wear[i] = Math.max(0, wear[i] - decay);
+    }
   }
 
   isWater(x: number, z: number): boolean {

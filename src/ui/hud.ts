@@ -18,6 +18,8 @@ export class Hud {
   private woodValue: HTMLElement;
   private stoneValue: HTMLElement;
   private foodValue: HTMLElement;
+  private toolsValue: HTMLElement;
+  private toolsStat: HTMLElement;
   private favorValue: HTMLElement;
   private favorRate: HTMLElement;
   private capacityBar: HTMLElement;
@@ -35,6 +37,7 @@ export class Hud {
     this.woodValue = el('span', { class: 'stat-value', text: '0' });
     this.stoneValue = el('span', { class: 'stat-value', text: '0' });
     this.foodValue = el('span', { class: 'stat-value', text: '0' });
+    this.toolsValue = el('span', { class: 'stat-value', text: '0' });
     this.favorValue = el('span', { class: 'stat-value', text: '0' });
     this.favorRate = el('span', { class: 'stat-rate', text: '' });
 
@@ -47,6 +50,7 @@ export class Hud {
       stat('wood', this.woodValue, 'Wood'),
       stat('stone', this.stoneValue, 'Stone'),
       stat('food', this.foodValue, 'Food'),
+      (this.toolsStat = stat('tools', this.toolsValue, 'Tools')),
       el('div', { class: 'stat stat-favor', title: 'Favor' }, icon('favor', 18), this.favorValue, this.favorRate),
       el(
         'div',
@@ -102,10 +106,15 @@ export class Hud {
     setText(this.woodValue, formatCount(haven.resources.wood));
     setText(this.stoneValue, formatCount(haven.resources.stone));
     setText(this.foodValue, formatCount(haven.resources.food));
+    setText(this.toolsValue, formatCount(haven.resources.tools || 0));
+    // The tools slot only appears once there is a workshop to make them in.
+    const makesTools =
+      (haven.resources.tools || 0) > 0 || haven.structures.completedOfType('workshop').length > 0;
+    toggleClass(this.toolsStat, 'is-hidden', !makesTools);
     setText(this.favorValue, formatCount(haven.favor));
     setText(this.favorRate, `+${haven.favorRate.toFixed(1)}/m`);
 
-    const used = haven.resources.wood + haven.resources.stone + haven.resources.food;
+    const used = haven.totalStored;
     const fraction = Math.min(1, used / Math.max(1, haven.capacity));
     this.capacityBar.style.width = `${(fraction * 100).toFixed(1)}%`;
     toggleClass(this.capacityBar, 'is-full', fraction > 0.92);

@@ -25,6 +25,18 @@ village that grew while you were gone.
 - **The villagers.** Two traits each out of eighteen, four needs, real
   friendships, and a utility-scored state machine covering idle, work and
   social behaviour. A Lazy villager still gets it done, with more naps on the way.
+- **They get better.** Every job has a proficiency that grows with practice
+  and slows as it rises, so after a few weeks the haven has a forester, a
+  mason and a builder that nobody assigned. Skill pays out in speed, in yield,
+  and in what they choose to do next.
+- **The paths are not designed.** Every step wears the ground a little, wear
+  fades, and routes that get walked often enough turn into trails that are
+  quicker to cross and cheaper to route along. Desire paths appear between the
+  storehouse and the woods because that is where people walk, and the grass
+  grows back over the ones they abandon.
+- **Tools.** The Workshop turns wood and stone into them; the Longhouse and
+  the Shrine need them; and a stocked toolshed makes everyone quicker at
+  everything, up to a point.
 - **The seasons.** Spring blossom, summer fireflies, autumn turning the oaks
   orange, snow settling on every upward-facing surface in winter. All of it is
   cosmetic by design: Pixel Haven never punishes you for looking away.
@@ -108,11 +120,12 @@ set the speed, `Escape` cancels.
 ```
 src/
   core/        seeded RNG, Perlin noise, maths, the world clock, an event bus
-  world/       the height field, its generation, natural props, A* navigation
+  world/       the height field, footfall, generation, props, A* navigation
   sim/         villagers, traits, the brain, and Haven — the simulation root
   build/       blueprint definitions and the structures they become
   render/      terrain mesher, water, instanced props, buildings, sprites,
-               sky and weather, the touch camera, the scene that drives them
+               trails, smoke, ground detail, sky and weather, the touch
+               camera, and the scene that drives them
   audio/       the whole soundtrack, synthesised
   ui/          HUD, build drawer, inspector, overlays, pixel icons
   state/       save, load, and offline catch-up
@@ -135,6 +148,10 @@ A few decisions worth knowing about:
 - **A save is a seed plus deltas.** The island regenerates from its seed; the
   save file carries the terrain edits, the props villagers felled or planted,
   the buildings and the people. It all fits in localStorage.
+- **Trails are decals, not terrain.** Baking wear into the height field would
+  mean re-meshing the island every time a patch of grass darkened. Flat decals
+  laid just above the ground cost an instance matrix each and can fade in
+  continuously, so a path arrives as grass thinning rather than a pop.
 - **Nothing is downloaded at runtime.** Every sprite, icon, texture and note of
   music is generated in code. There are no asset files to miss.
 

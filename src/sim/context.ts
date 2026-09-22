@@ -18,6 +18,7 @@ export interface ResourceDemand {
   wood: number;
   stone: number;
   food: number;
+  tools: number;
 }
 
 export type LogTone = 'neutral' | 'good' | 'warn' | 'milestone';
@@ -32,6 +33,11 @@ export interface ColonyView {
   charm: number;
   /** Workshop bonus applied to construction work. */
   buildSpeed: number;
+  /**
+   * Multiplier on every kind of work from the tools in store, 1 to 1.3.
+   * Nobody carries a specific axe; the village simply has decent kit or not.
+   */
+  toolEdge: number;
   /** Nearest place to drop off or pick up goods. */
   depotFor(x: number, z: number): { x: number; z: number };
   store(resource: ResourceKind, amount: number): number;

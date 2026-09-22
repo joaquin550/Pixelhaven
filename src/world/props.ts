@@ -47,7 +47,12 @@ export interface Prop {
   alive: boolean;
 }
 
-export const PROP_YIELD: Partial<Record<PropKind, { resource: 'wood' | 'stone' | 'food'; amount: number; work: number }>> = {
+/** The resources that can be taken straight off the land. Tools are made. */
+export type HarvestKind = 'wood' | 'stone' | 'food';
+
+export const PROP_YIELD: Partial<
+  Record<PropKind, { resource: HarvestKind; amount: number; work: number }>
+> = {
   pine: { resource: 'wood', amount: 6, work: 7 },
   oak: { resource: 'wood', amount: 8, work: 9 },
   birch: { resource: 'wood', amount: 5, work: 6 },
@@ -118,7 +123,7 @@ export class PropRegistry {
   findNearestHarvestable(
     x: number,
     z: number,
-    resource: 'wood' | 'stone' | 'food',
+    resource: HarvestKind,
     maxDist = WORLD_SIZE,
   ): Prop | undefined {
     let best: Prop | undefined;
@@ -136,7 +141,7 @@ export class PropRegistry {
     return best;
   }
 
-  countOf(resource: 'wood' | 'stone' | 'food'): number {
+  countOf(resource: HarvestKind): number {
     let n = 0;
     for (const prop of this.props) {
       const info = PROP_YIELD[prop.kind];

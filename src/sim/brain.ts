@@ -13,10 +13,11 @@
 import { clamp, clamp01 } from '../core/mathx';
 import { SECONDS_PER_DAY } from '../core/time';
 import { Occupancy } from '../world/constants';
-import { PROP_YIELD, Prop, isTree } from '../world/props';
+import { HarvestKind, PROP_YIELD, Prop, isTree } from '../world/props';
 import { BLUEPRINT_BY_ID, ResourceKind } from '../build/blueprints';
 import { Structure } from '../build/structures';
 import type { SimContext } from './context';
+import type { Job } from './traits';
 import { BubbleIcon, Task, TaskKind, Villager } from './villager';
 
 const ENERGY_DRAIN = 0.2;
@@ -178,6 +179,23 @@ function chooseTask(v: Villager, ctx: SimContext): void {
     });
   }
 
+  // --- crafting ---------------------------------------------------------
+  // Outside the storage-headroom block above, because a batch of tools costs
+  // six units of raw material and returns three: crafting makes room rather
+  // than filling it. It still needs the shelves not to be overflowing, or the
+  // finished tools would have nowhere to go and the work would be wasted.
+  if (
+    colony.resources.wood >= CRAFT_WOOD &&
+    colony.resources.stone >= CRAFT_STONE &&
+    totalStored(ctx) <= colony.capacity
+  ) {
+    candidates.push({
+      kind: 'craft',
+      score: colony.demand.tools * 1.45 * workBias * daylightFactor * affinity(v, 'building'),
+      build: () => buildCraftTask(v, ctx),
+    });
+  }
+
   // --- downtime ---------------------------------------------------------
   const restfulness = 0.12 + v.mods.restBias * 0.5 + (1 - clamp01(v.energy / 100)) * 0.35;
   candidates.push({ kind: 'relax', score: restfulness, build: () => buildRelaxTask(v, ctx) });
@@ -199,15 +217,21 @@ function chooseTask(v: Villager, ctx: SimContext): void {
   }
 }
 
-function affinity(v: Villager, job: 'forestry' | 'masonry' | 'farming' | 'foraging'): number {
-  // A villager who is good at something leans towards it, but never refuses
-  // anything else - nobody in Pixel Haven is unemployable.
-  return 0.75 + v.mods[job] * 0.35;
+function affinity(v: Villager, job: Job): number {
+  // A villager leans towards what they are inclined to do and, more strongly,
+  // towards what they have got good at. Nobody refuses anything else, though:
+  // there is no such thing as an unemployable villager here.
+  return 0.75 + v.mods[job] * 0.35 + (v.skills[job] / 100) * 0.3;
+}
+
+/** Practice pays out in yield as well as speed, up to a quarter more. */
+function yieldBonus(v: Villager, job: Job): number {
+  return 1 + (v.skills[job] / 100) * 0.25;
 }
 
 function totalStored(ctx: SimContext): number {
   const r = ctx.colony.resources;
-  return r.wood + r.stone + r.food;
+  return (r.wood || 0) + (r.stone || 0) + (r.food || 0) + (r.tools || 0);
 }
 
 /* --------------------------------------------------------- task factories */
@@ -362,7 +386,7 @@ function buildHaulTask(v: Villager, ctx: SimContext): Task | null {
 function buildGatherTask(
   v: Villager,
   ctx: SimContext,
-  resource: ResourceKind,
+  resource: HarvestKind,
   kind: TaskKind,
 ): Task | null {
   const prop = ctx.props.findNearestHarvestable(v.x, v.z, resource);
@@ -386,7 +410,7 @@ function buildGatherTask(
     targetZ: spot.z,
     propId: prop.id,
     resource,
-    work: info.work / Math.max(0.35, v.workRate(job)),
+    work: info.work / Math.max(0.35, v.workRate(job) * ctx.colony.toolEdge),
     totalWork: info.work,
     timeout: 220,
   });
@@ -417,9 +441,32 @@ function buildFarmTask(v: Villager, ctx: SimContext, wantRipe: boolean): Task | 
     targetZ: spot.z,
     structureId: best.id,
     resource: 'food',
-    work: work / Math.max(0.35, v.workRate('farming')),
+    work: work / Math.max(0.35, v.workRate('farming') * ctx.colony.toolEdge),
     totalWork: work,
     timeout: 200,
+  });
+}
+
+/** Wood and stone in, tools out. */
+export const CRAFT_WOOD = 4;
+export const CRAFT_STONE = 2;
+export const CRAFT_TOOLS = 3;
+
+function buildCraftTask(v: Villager, ctx: SimContext): Task | null {
+  const workshop = nearestCompleted(ctx, v, ['workshop'], (s) => s.claimedBy === 0 || s.claimedBy === v.id);
+  if (!workshop) return null;
+  workshop.claimedBy = v.id;
+  const spot = ctx.structures.accessPoint(workshop);
+  return makeTask({
+    kind: 'craft',
+    label: 'Making tools at the workshop',
+    targetX: spot.x,
+    targetZ: spot.z,
+    structureId: workshop.id,
+    resource: 'tools',
+    work: 14 / Math.max(0.35, v.workRate('building') * ctx.colony.toolEdge),
+    totalWork: 14,
+    timeout: 220,
   });
 }
 
@@ -435,7 +482,7 @@ function buildFishTask(v: Villager, ctx: SimContext): Task | null {
     targetZ: spot.z,
     structureId: dock.id,
     resource: 'food',
-    work: 13 / Math.max(0.35, v.workRate('foraging')),
+    work: 13 / Math.max(0.35, v.workRate('foraging') * ctx.colony.toolEdge),
     totalWork: 13,
     timeout: 220,
   });
@@ -576,6 +623,9 @@ function onArrive(v: Villager, ctx: SimContext): void {
     case 'fish':
       v.say('fish', 5);
       break;
+    case 'craft':
+      v.say('hammer', 5);
+      break;
     case 'build':
       v.say('hammer', 5);
       break;
@@ -705,9 +755,10 @@ function performBuild(v: Villager, ctx: SimContext): void {
   }
   v.anim = 'work';
   faceTowards(v, structure.x + structure.width / 2, structure.z + structure.depth / 2);
-  const amount = ctx.dt * v.workRate('building') * ctx.colony.buildSpeed;
+  const amount = ctx.dt * v.workRate('building') * ctx.colony.buildSpeed * ctx.colony.toolEdge;
   const done = ctx.structures.applyWork(structure, amount);
   v.stats.built += amount;
+  v.practise('building', ctx.dt * 0.22);
   task.work = structure.work - structure.progress;
   if (done) {
     ctx.colony.onStructureComplete(structure, v);
@@ -772,23 +823,44 @@ function performGather(v: Villager, ctx: SimContext): void {
 
   if (task.kind === 'tend') {
     structure.crop = clamp01(structure.crop + 0.4);
+    v.practise('farming', 1.1);
     v.joy += 2;
     finishTask(v, ctx);
     return;
   }
 
   if (task.kind === 'harvest') {
-    const amount = Math.round(9 * v.mods.farming);
+    // A practised farmer brings more in off the same rows.
+    const amount = Math.round(9 * v.mods.farming * yieldBonus(v, 'farming'));
     structure.crop = 0;
     structure.claimedBy = 0;
+    v.practise('farming', 1.6);
     startDelivery(v, ctx, 'food', amount);
     return;
   }
 
   if (task.kind === 'fish') {
-    const amount = Math.round(5 * v.mods.foraging);
+    const amount = Math.round(5 * v.mods.foraging * yieldBonus(v, 'foraging'));
     structure.claimedBy = 0;
+    v.practise('foraging', 1.4);
     startDelivery(v, ctx, 'food', amount);
+    return;
+  }
+
+  if (task.kind === 'craft') {
+    structure.claimedBy = 0;
+    // The raw materials come off the shelf as the work finishes.
+    const wood = ctx.colony.take('wood', CRAFT_WOOD);
+    const stone = ctx.colony.take('stone', CRAFT_STONE);
+    if (wood < CRAFT_WOOD || stone < CRAFT_STONE) {
+      // Somebody beat them to the last of it. Put back what was taken.
+      ctx.colony.store('wood', wood);
+      ctx.colony.store('stone', stone);
+      finishTask(v, ctx);
+      return;
+    }
+    v.practise('building', 1.5);
+    startDelivery(v, ctx, 'tools', Math.round(CRAFT_TOOLS * yieldBonus(v, 'building')));
     return;
   }
 
@@ -801,6 +873,10 @@ function harvestProp(v: Villager, ctx: SimContext, prop: Prop): void {
     finishTask(v, ctx);
     return;
   }
+  const job: Job =
+    info.resource === 'wood' ? 'forestry' : info.resource === 'stone' ? 'masonry' : 'foraging';
+  v.practise(job, 1.5);
+
   const amount = Math.min(prop.yield, v.carryCapacity);
   prop.yield -= amount;
   prop.claimedBy = 0;
@@ -929,6 +1005,8 @@ export function bubbleForTask(kind: TaskKind): BubbleIcon {
       return 'hoe';
     case 'fish':
       return 'fish';
+    case 'craft':
+      return 'hammer';
     case 'build':
       return 'hammer';
     case 'haul':

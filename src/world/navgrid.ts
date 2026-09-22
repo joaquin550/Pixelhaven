@@ -215,9 +215,11 @@ export class NavGrid {
         const ni = index(nx, nz);
         // Climbing costs extra so villagers prefer the gentle way round.
         const climb = Math.abs(this.terrain.heights[ni] - this.terrain.heights[current]) * 0.8;
-        // Paths and bridges are a pleasure to walk on.
-        const paved = (this.terrain.occupancy[ni] & Occupancy.Walkable) !== 0 ? -0.25 : 0;
-        const tentative = baseG + cost + climb + paved;
+        // Laid paths are a pleasure to walk on, and so, increasingly, is a
+        // trail the village has worn in for itself. Routing along them is what
+        // makes a path deepen instead of scattering.
+        const paved = (this.terrain.occupancy[ni] & Occupancy.Walkable) !== 0 ? 1 : this.terrain.wear[ni];
+        const tentative = baseG + cost + climb - paved * 0.3;
 
         if (this.visitGen[ni] !== gen || tentative < this.gScore[ni]) {
           this.visitGen[ni] = gen;

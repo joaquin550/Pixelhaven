@@ -25,7 +25,7 @@ function place(haven: Haven, defId: string): void {
 describe('save round-trip', () => {
   it('restores terrain, props, villagers and buildings', () => {
     const haven = new Haven('round-trip');
-    haven.resources = { wood: 200, stone: 200, food: 200 };
+    haven.resources = { wood: 200, stone: 200, food: 200, tools: 20 };
     place(haven, 'cottage');
     place(haven, 'farm');
     for (let t = 0; t < 700; t += 1 / 15) haven.update(1 / 15);

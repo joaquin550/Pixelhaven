@@ -79,7 +79,7 @@ try {
   await page.evaluate(() => {
     // Enough to build with, but well under capacity - a full storehouse
     // legitimately stops everybody gathering.
-    window.pixelHaven.haven.resources = { wood: 80, stone: 40, food: 60 };
+    window.pixelHaven.haven.resources = { wood: 80, stone: 40, food: 60, tools: 0 };
     const origin = window.pixelHaven.haven.origin;
     window.pixelHaven.scene.rig.focusOn(origin.x, origin.z, 26);
   });

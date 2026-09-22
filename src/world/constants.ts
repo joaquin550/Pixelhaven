@@ -12,6 +12,24 @@ export const MAX_HEIGHT = 26;
 /** Largest step a villager can walk up or down without stairs. */
 export const MAX_STEP = 1;
 
+/**
+ * Footfall added to a cell each time somebody walks onto it.
+ *
+ * Balanced against WEAR_DECAY: a cell holds its trail if it is stepped on
+ * about once every two minutes, which a route between the storehouse and the
+ * woods comfortably manages and a one-off stroll does not.
+ */
+export const WEAR_PER_STEP = 0.085;
+
+/** How fast unused ground recovers, per second. */
+export const WEAR_DECAY = 0.0006;
+
+/** Footfall at which the grass gives up and a trail shows. */
+export const TRAIL_THRESHOLD = 0.14;
+
+/** How much quicker a fully worn trail is to walk than open ground. */
+export const TRAIL_SPEED_BONUS = 0.3;
+
 export const TerrainType = {
   Water: 0,
   Sand: 1,
