@@ -27,6 +27,11 @@ jobs:
       - name: Build
         run: npm run build
 
+      # Self-verifies that the output is actually self-contained. A broken
+      # single-file build once shipped silently; now it fails here.
+      - name: Build the standalone single file
+        run: npm run build:single
+
       - name: Install Chromium for the smoke test
         run: npx playwright install --with-deps chromium
 
