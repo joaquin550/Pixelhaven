@@ -521,6 +521,9 @@ function registerServiceWorker(): void {
   // A standalone single-file build has no sw.js sitting next to it, and
   // nothing to cache that is not already in the page.
   if (typeof __SINGLE_FILE__ !== 'undefined' && __SINGLE_FILE__) return;
+  // Inside the native shell the whole game is already on the device, and
+  // WKWebView serves it from capacitor://, where service workers do not run.
+  if ((window as unknown as { Capacitor?: unknown }).Capacitor) return;
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register(`${import.meta.env.BASE_URL}sw.js`)

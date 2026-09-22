@@ -1,12 +1,13 @@
 /**
- * Generates the PWA icon set.
+ * Generates every icon the game ships: the PWA set, and the iOS app icon and
+ * launch image when the native project exists.
  *
  * Draws the mark as a small pixel grid and scales it up with nearest-neighbour
  * sampling, then writes real PNGs with a minimal encoder - no image library, so
- * `npm install` stays to three dev dependencies.
+ * the dependency list stays short.
  */
 import { deflateSync } from 'node:zlib';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -116,22 +117,43 @@ function encodePng(width, height, rgba) {
   ]);
 }
 
-function render(size) {
+/**
+ * Draws the mark at `size`, optionally inset into a larger field of `ground`.
+ *
+ * `fraction` 1 fills the canvas, which is what an app icon wants - iOS masks
+ * the corners itself and rejects transparency. A smaller fraction floats the
+ * island in the middle, which is what a launch screen wants.
+ */
+function render(size, { fraction = 1, ground = null, blendBackground = false } = {}) {
   const source = ART.length;
   const rgba = Buffer.alloc(size * size * 4);
-  const scale = size / source;
+  const art = Math.round(size * fraction);
+  const offsetPx = Math.round((size - art) / 2);
+  const scale = art / source;
+  const [gr, gg, gb] = hexToRgb(ground ?? PALETTE.b);
 
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const sx = Math.min(source - 1, Math.floor(x / scale));
-      const sy = Math.min(source - 1, Math.floor(y / scale));
-      const key = ART[sy][sx] ?? 'b';
-      const hex = PALETTE[key] ?? PALETTE.b;
-      const [r, g, b] = hexToRgb(hex);
+      const ax = x - offsetPx;
+      const ay = y - offsetPx;
+      let colour;
+      if (ax < 0 || ay < 0 || ax >= art || ay >= art) {
+        colour = [gr, gg, gb];
+      } else {
+        const sx = Math.min(source - 1, Math.floor(ax / scale));
+        const sy = Math.min(source - 1, Math.floor(ay / scale));
+        const key = ART[sy][sx] ?? 'b';
+        // On a launch screen the mark's own sky would read as a floating
+        // card, so its background keys take the surrounding ground instead.
+        colour =
+          blendBackground && (key === 'b' || key === 'd')
+            ? [gr, gg, gb]
+            : hexToRgb(PALETTE[key] ?? PALETTE.b);
+      }
       const offset = (y * size + x) * 4;
-      rgba[offset] = r;
-      rgba[offset + 1] = g;
-      rgba[offset + 2] = b;
+      rgba[offset] = colour[0];
+      rgba[offset + 1] = colour[1];
+      rgba[offset + 2] = colour[2];
       rgba[offset + 3] = 255;
     }
   }
@@ -150,4 +172,21 @@ const targets = [
 for (const [name, size] of targets) {
   writeFileSync(resolve(outDir, name), render(size));
   console.log(`wrote icons/${name} (${size}x${size})`);
+}
+
+// iOS, when the native project has been generated.
+const iosAssets = resolve(here, '../ios/App/App/Assets.xcassets');
+if (existsSync(iosAssets)) {
+  // App icon: one 1024 square, opaque and corner-to-corner. iOS applies its
+  // own mask and rejects an alpha channel.
+  writeFileSync(resolve(iosAssets, 'AppIcon.appiconset/AppIcon-512@2x.png'), render(1024));
+  console.log('wrote ios AppIcon-512@2x.png (1024x1024)');
+
+  // Launch image: the mark floating on the night sky, so the hand-off from
+  // launch screen to first rendered frame is the same colour.
+  const splash = render(2732, { fraction: 0.34, ground: '#10161f', blendBackground: true });
+  for (const name of ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png']) {
+    writeFileSync(resolve(iosAssets, `Splash.imageset/${name}`), splash);
+  }
+  console.log('wrote ios splash x3 (2732x2732)');
 }
