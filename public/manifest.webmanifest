@@ -1,0 +1,17 @@
+{
+  "name": "Pixel Haven",
+  "short_name": "Pixel Haven",
+  "description": "A 2.5D idle life simulator. Pixel villagers build and live on a voxel island while you watch over them.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#10161f",
+  "theme_color": "#1d2b3a",
+  "categories": ["games", "entertainment"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
