@@ -55,6 +55,20 @@ export const Occupancy = {
   Reserved: 1 << 3,
 } as const;
 
+/**
+ * Cells per side of a mesh chunk.
+ *
+ * The island is meshed in chunks so sculpting only rebuilds what changed. A
+ * full rebuild is ~25ms, which is a visible hitch every time the ground moves;
+ * one chunk is under a millisecond.
+ */
+export const CHUNK_SIZE = 16;
+export const CHUNKS_PER_SIDE = WORLD_SIZE / CHUNK_SIZE;
+export const CHUNK_COUNT = CHUNKS_PER_SIDE * CHUNKS_PER_SIDE;
+
+export const chunkIndexFor = (x: number, z: number): number =>
+  Math.floor(z / CHUNK_SIZE) * CHUNKS_PER_SIDE + Math.floor(x / CHUNK_SIZE);
+
 export const index = (x: number, z: number): number => z * WORLD_SIZE + x;
 export const inBounds = (x: number, z: number): boolean =>
   x >= 0 && z >= 0 && x < WORLD_SIZE && z < WORLD_SIZE;

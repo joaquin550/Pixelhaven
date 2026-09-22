@@ -1,7 +1,7 @@
 /** Assembles every interface layer and routes state into it once per frame. */
 import { Settings } from '../state/save';
 import { Hud } from './hud';
-import { BuildBar } from './buildBar';
+import { ShapeBar } from './shapeBar';
 import { Inspector } from './inspector';
 import { AwayCard, SettingsSheet, TitleCard, Toasts } from './overlays';
 import { el } from './dom';
@@ -10,7 +10,7 @@ import { UiHandlers, UiState } from './types';
 export class GameUI {
   readonly root: HTMLElement;
   readonly hud: Hud;
-  readonly buildBar: BuildBar;
+  readonly shapeBar: ShapeBar;
   readonly inspector: Inspector;
   readonly toasts = new Toasts();
   readonly title: TitleCard;
@@ -20,7 +20,7 @@ export class GameUI {
   constructor(handlers: UiHandlers) {
     this.settings = new SettingsSheet(handlers);
     this.hud = new Hud(handlers, () => this.settings.show());
-    this.buildBar = new BuildBar(handlers);
+    this.shapeBar = new ShapeBar(handlers);
     this.inspector = new Inspector(handlers);
     this.title = new TitleCard(handlers);
     this.away = new AwayCard(handlers);
@@ -30,7 +30,7 @@ export class GameUI {
       { class: 'ui-layer' },
       this.hud.root,
       this.inspector.root,
-      this.buildBar.root,
+      this.shapeBar.root,
       this.toasts.root,
       this.away.root,
       this.settings.root,
@@ -40,7 +40,7 @@ export class GameUI {
 
   update(state: UiState): void {
     this.hud.update(state);
-    this.buildBar.update(state);
+    this.shapeBar.update(state);
     this.inspector.update(state);
   }
 

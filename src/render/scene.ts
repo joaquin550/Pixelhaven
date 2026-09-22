@@ -8,28 +8,24 @@
  */
 import {
   ACESFilmicToneMapping,
+  CircleGeometry,
   Color,
   DoubleSide,
   Group,
   Mesh,
   MeshBasicMaterial,
-  PlaneGeometry,
   Raycaster,
+  RingGeometry,
   SRGBColorSpace,
   Scene,
   Vector2,
   Vector3,
   WebGLRenderer,
-  EdgesGeometry,
-  LineSegments,
-  LineBasicMaterial,
-  BoxGeometry,
 } from 'three';
 import { clamp } from '../core/mathx';
 import { ClockSnapshot } from '../core/time';
 import { WATER_LEVEL, WORLD_SIZE, inBounds } from '../world/constants';
 import { Haven } from '../sim/haven';
-import { BlueprintDef } from '../build/blueprints';
 import { CameraRig, CameraRigOptions } from './cameraRig';
 import { TerrainRenderer } from './terrainMesh';
 import { WaterRenderer } from './water';
@@ -84,10 +80,10 @@ export class GameScene {
   readonly groundDetail: GroundDetailRenderer;
 
   private raycaster = new Raycaster();
-  private preview: Group;
-  private previewFill: Mesh;
-  private previewEdges: LineSegments;
-  private previewSize = { w: 0, d: 0, h: 0 };
+  private brush: Group;
+  private brushRing: Mesh;
+  private brushFill: Mesh;
+  private brushRadius = -1;
   private quality: SceneQuality = { ...DEFAULT_QUALITY };
   private elapsed = 0;
   /** Rolling average frame time, used to back off quality automatically. */
@@ -130,7 +126,7 @@ export class GameScene {
     this.smoke = new SmokeRenderer(haven.structures);
     this.groundDetail = new GroundDetailRenderer(haven.terrain);
 
-    this.scene.add(this.terrain.mesh);
+    this.scene.add(this.terrain.group);
     this.scene.add(this.water.mesh);
     this.scene.add(this.trails.mesh);
     this.scene.add(this.groundDetail.mesh);
@@ -140,12 +136,12 @@ export class GameScene {
     this.scene.add(this.weather.points);
     this.scene.add(this.smoke.mesh);
 
-    const { group, fill, edges } = createPreview();
-    this.preview = group;
-    this.previewFill = fill;
-    this.previewEdges = edges;
-    this.preview.visible = false;
-    this.scene.add(this.preview);
+    const { group, ring, fill } = createBrush();
+    this.brush = group;
+    this.brushRing = ring;
+    this.brushFill = fill;
+    this.brush.visible = false;
+    this.scene.add(this.brush);
 
     this.rig.focusOn(haven.origin.x, haven.origin.z, 58);
     this.resize();
@@ -157,7 +153,7 @@ export class GameScene {
     this.sky.sun.castShadow = this.quality.shadows;
     this.weather.points.visible = this.quality.weather;
     this.villagers.showBubbles = this.quality.bubbles;
-    this.terrain.mesh.castShadow = this.quality.shadows;
+    for (const child of this.terrain.group.children) child.castShadow = this.quality.shadows;
     this.resize();
     // Materials need recompiling when the shadow setting flips.
     this.scene.traverse((object) => {
@@ -295,32 +291,33 @@ export class GameScene {
     return null;
   }
 
-  /* ------------------------------------------------------- build preview */
+  /* -------------------------------------------------------- sculpt brush */
 
-  showPreview(def: BlueprintDef, x: number, z: number, valid: boolean): void {
-    const y = def.placement === 'water' ? WATER_LEVEL : this.haven.terrain.heightAt(x, z);
-    const height = Math.max(0.5, estimateHeight(def));
-
-    if (this.previewSize.w !== def.width || this.previewSize.d !== def.depth || this.previewSize.h !== height) {
-      rebuildPreviewGeometry(this.previewFill, this.previewEdges, def.width, def.depth, height);
-      this.previewSize = { w: def.width, d: def.depth, h: height };
+  /**
+   * Shows where a stroke would land.
+   *
+   * The ring sits at the height of the cell under the cursor and follows the
+   * ground, so on a slope it reads as a contour rather than a floating disc.
+   */
+  showBrush(x: number, z: number, radius: number, affordable: boolean): void {
+    if (this.brushRadius !== radius) {
+      rebuildBrushGeometry(this.brushRing, this.brushFill, radius);
+      this.brushRadius = radius;
     }
 
-    this.preview.visible = true;
-    this.preview.position.set(x, y + 0.02, z);
+    this.brush.visible = true;
+    this.brush.position.set(x + 0.5, this.haven.terrain.heightAt(x, z) + 0.05, z + 0.5);
 
-    const color = valid ? 0x4fd48a : 0xe8564a;
-    (this.previewFill.material as MeshBasicMaterial).color.setHex(color);
-    (this.previewEdges.material as LineBasicMaterial).color.setHex(color);
-    // Gentle pulse so the ghost reads as "not real yet", but strong enough to
-    // tell green from red at a glance in bright sunlight.
-    const pulse = 0.34 + Math.sin(this.elapsed * 4) * 0.08;
-    (this.previewFill.material as MeshBasicMaterial).opacity = pulse;
-    (this.previewEdges.material as LineBasicMaterial).opacity = 1;
+    const colour = affordable ? 0x9fe8ff : 0xe8564a;
+    (this.brushRing.material as MeshBasicMaterial).color.setHex(colour);
+    (this.brushFill.material as MeshBasicMaterial).color.setHex(colour);
+    const pulse = 0.5 + Math.sin(this.elapsed * 7) * 0.16;
+    (this.brushRing.material as MeshBasicMaterial).opacity = pulse + 0.35;
+    (this.brushFill.material as MeshBasicMaterial).opacity = pulse * 0.24;
   }
 
-  hidePreview(): void {
-    this.preview.visible = false;
+  hideBrush(): void {
+    this.brush.visible = false;
   }
 
   dispose(): void {
@@ -335,83 +332,51 @@ export class GameScene {
     this.trails.dispose();
     this.smoke.dispose();
     this.groundDetail.dispose();
-    this.previewFill.geometry.dispose();
-    this.previewEdges.geometry.dispose();
+    this.brushRing.geometry.dispose();
+    this.brushFill.geometry.dispose();
     this.renderer.dispose();
   }
 }
 
-/** Rough finished height per blueprint, for sizing the placement ghost. */
-function estimateHeight(def: BlueprintDef): number {
-  switch (def.id) {
-    case 'cottage':
-      return 3.0;
-    case 'longhouse':
-      return 3.4;
-    case 'barn':
-      return 2.8;
-    case 'workshop':
-      return 2.3;
-    case 'well':
-      return 2.0;
-    case 'shrine':
-      return 2.1;
-    case 'lantern':
-      return 1.85;
-    case 'hearth':
-      return 1.1;
-    case 'farm':
-      return 0.8;
-    case 'dock':
-      return 0.6;
-    case 'bridge':
-      return 0.6;
-    default:
-      return 0.4;
-  }
-}
-
-function createPreview(): { group: Group; fill: Mesh; edges: LineSegments } {
+function createBrush(): { group: Group; ring: Mesh; fill: Mesh } {
   const group = new Group();
-  group.name = 'build-preview';
+  group.name = 'sculpt-brush';
 
   const fill = new Mesh(
-    new PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+    new CircleGeometry(1, 28).rotateX(-Math.PI / 2),
     new MeshBasicMaterial({
-      color: 0x7fe3a8,
+      color: 0x9fe8ff,
       transparent: true,
-      opacity: 0.3,
+      opacity: 0.2,
       depthWrite: false,
       side: DoubleSide,
     }),
   );
   group.add(fill);
 
-  const edges = new LineSegments(
-    new EdgesGeometry(new BoxGeometry(1, 1, 1)),
-    new LineBasicMaterial({ color: 0x7fe3a8, transparent: true, opacity: 0.95 }),
+  const ring = new Mesh(
+    new RingGeometry(0.9, 1, 28).rotateX(-Math.PI / 2),
+    new MeshBasicMaterial({
+      color: 0x9fe8ff,
+      transparent: true,
+      opacity: 0.9,
+      depthWrite: false,
+      depthTest: false,
+      side: DoubleSide,
+    }),
   );
-  group.add(edges);
+  ring.renderOrder = 6;
+  group.add(ring);
 
-  return { group, fill, edges };
+  return { group, ring, fill };
 }
 
-function rebuildPreviewGeometry(
-  fill: Mesh,
-  edges: LineSegments,
-  width: number,
-  depth: number,
-  height: number,
-): void {
+function rebuildBrushGeometry(ring: Mesh, fill: Mesh, radius: number): void {
+  // The sculpt brush covers a disc of cells, so the ring is drawn at the
+  // radius the stroke actually reaches rather than a nominal one.
+  const reach = radius + 0.5;
+  ring.geometry.dispose();
+  ring.geometry = new RingGeometry(reach - 0.14, reach, 40).rotateX(-Math.PI / 2);
   fill.geometry.dispose();
-  const plane = new PlaneGeometry(width, depth).rotateX(-Math.PI / 2);
-  plane.translate(width / 2, 0, depth / 2);
-  fill.geometry = plane;
-
-  edges.geometry.dispose();
-  const box = new BoxGeometry(width, height, depth);
-  box.translate(width / 2, height / 2, depth / 2);
-  const wire = new EdgesGeometry(box);
-  box.dispose();
-  edges.geometry = wire;
+  fill.geometry = new CircleGeometry(reach, 40).rotateX(-Math.PI / 2);
 }

@@ -39,7 +39,7 @@ export class TitleCard {
   constructor(handlers: UiHandlers) {
     this.subtitle = el('p', {
       class: 'title-sub',
-      text: 'A small island, a handful of people, and nothing that needs you.',
+      text: 'You move the earth. They decide what to do about it.',
     });
     this.beginLabel = el('span', { text: 'Begin' });
 
@@ -62,6 +62,7 @@ export class TitleCard {
           hint('One finger', 'turns the island'),
           hint('Two fingers', 'pinch to zoom, slide to pan'),
           hint('Tap a villager', 'to see what they are up to'),
+          hint('Shape', 'raise and flatten ground; they build where they can'),
         ),
       ),
     );
@@ -73,7 +74,7 @@ export class TitleCard {
       this.subtitle,
       hasSave
         ? 'Your haven carried on without you. Come and see.'
-        : 'A small island, a handful of people, and nothing that needs you.',
+        : 'You move the earth. They decide what to do about it.',
     );
   }
 

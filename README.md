@@ -11,17 +11,27 @@ and works offline.
 
 ## What it is
 
-You are not a manager. Villagers decide for themselves what to chop, what to
-plant, who to talk to and when to go to bed, based on their needs, their traits
-and what the haven is short of. You can lean on that — mark out a blueprint and
-they will haul the materials and raise it, point someone somewhere, spend Favor
-on a warm meal — but you can also just leave it running and come back to a
-village that grew while you were gone.
+You do not place buildings. You move earth.
+
+Villagers decide everything for themselves: what to chop, what to plant, who to
+talk to, when to go to bed, and what the village needs built next. What you
+control is the island they are standing on. Flatten a shelf on the hillside and
+they will eventually settle it, because flat dry ground is the only invitation
+they understand. Raise a ridge and they will not cross it — they can scramble
+down a cliff but only climb a single voxel, so a wall you pull out of the
+ground is a wall in one direction. Scoop a hollow below the waterline and the
+sea comes in, and in time somebody builds a dock on it.
+
+Nothing is ever ordered. The land is the instruction.
 
 - **The island.** 96×96 voxel columns generated from a seed: a warped radial
   coastline, a carved meandering river, beaches, cliffs, and a ridge of
   mountains. Trees, boulders and bushes sit *off* the grid, at their own
   positions, rotations and scales, so a blocky island never reads as graph paper.
+- **The land is the only lever.** Three earth-moving tools and a brush size,
+  paid for in Favor, which a contented village earns faster than a miserable
+  one. Heaving ground uproots whatever was rooted in it, and the timber and
+  stone go to the stockpile, so reshaping is also clearing.
 - **The villagers.** Two traits each out of eighteen, four needs, real
   friendships, and a utility-scored state machine covering idle, work and
   social behaviour. A Lazy villager still gets it done, with more naps on the way.
@@ -109,7 +119,7 @@ with no network connection.
 | Two fingers, twist | Spin the view |
 | Tap a villager | See who they are and what they are doing |
 | Double-tap | Focus and push in on that spot |
-| **Build** → a card, then press and slide | Aim a blueprint; lift to place it |
+| **Shape** → a tool, then press and drag | Raise, lower or flatten the ground |
 | **Favor** | Spend what the haven's good mood earns you |
 
 On a desktop: left-drag orbits, the scroll wheel zooms, `space` pauses, `1`–`4`
@@ -120,8 +130,9 @@ set the speed, `Escape` cancels.
 ```
 src/
   core/        seeded RNG, Perlin noise, maths, the world clock, an event bus
-  world/       the height field, footfall, generation, props, A* navigation
-  sim/         villagers, traits, the brain, and Haven — the simulation root
+  world/       the height field, sculpting, footfall, props, A* navigation
+  sim/         villagers, traits, the brain, the planner that decides what to
+               build, and Haven — the simulation root
   build/       blueprint definitions and the structures they become
   render/      terrain mesher, water, instanced props, buildings, sprites,
                trails, smoke, ground detail, sky and weather, the touch
@@ -148,6 +159,10 @@ A few decisions worth knowing about:
 - **A save is a seed plus deltas.** The island regenerates from its seed; the
   save file carries the terrain edits, the props villagers felled or planted,
   the buildings and the people. It all fits in localStorage.
+- **The island is meshed in chunks.** Sculpting is a continuous gesture, and a
+  full re-mesh is about 25ms — a visible hitch every time the ground moves. Only
+  the chunks an edit touched are rebuilt, and a per-frame budget spreads a big
+  stroke over a few frames instead of dropping one.
 - **Trails are decals, not terrain.** Baking wear into the height field would
   mean re-meshing the island every time a patch of grass darkened. Flat decals
   laid just above the ground cost an instance matrix each and can fade in

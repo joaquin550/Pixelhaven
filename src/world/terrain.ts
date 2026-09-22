@@ -11,6 +11,7 @@ import { Noise2D } from '../core/noise';
 import { Rng, hashSeed } from '../core/rng';
 import { clamp, clamp01, smoothstep } from '../core/mathx';
 import {
+  CHUNK_COUNT,
   MAX_HEIGHT,
   Occupancy,
   TRAIL_THRESHOLD,
@@ -18,6 +19,7 @@ import {
   WATER_LEVEL,
   WEAR_DECAY,
   WORLD_SIZE,
+  chunkIndexFor,
   inBounds,
   index,
 } from './constants';
@@ -41,6 +43,14 @@ export class Terrain {
   readonly wear: Float32Array;
   /** Bumped whenever geometry changes so the renderer knows to re-mesh. */
   revision = 0;
+  /**
+   * Chunks whose geometry no longer matches the height field.
+   *
+   * The renderer drains this. A cell's side faces and ambient occlusion depend
+   * on its eight neighbours, so editing one cell dirties every chunk those
+   * neighbours fall in, not just its own.
+   */
+  readonly dirtyChunks = new Set<number>();
 
   constructor(seed: string) {
     this.seed = seed;
@@ -51,6 +61,7 @@ export class Terrain {
     this.fertility = new Float32Array(cells);
     this.wear = new Float32Array(cells);
     generateIsland(this);
+    this.markAllDirty();
   }
 
   heightAt(x: number, z: number): number {
@@ -66,13 +77,30 @@ export class Terrain {
   setType(x: number, z: number, type: number): void {
     if (!inBounds(x, z)) return;
     this.types[index(x, z)] = type;
+    this.markDirty(x, z);
     this.revision++;
   }
 
   setHeight(x: number, z: number, height: number): void {
     if (!inBounds(x, z)) return;
     this.heights[index(x, z)] = clamp(Math.round(height), 0, MAX_HEIGHT);
+    this.markDirty(x, z);
     this.revision++;
+  }
+
+  /** Flags the chunks whose geometry depends on this cell. */
+  markDirty(x: number, z: number): void {
+    for (let dz = -1; dz <= 1; dz++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx;
+        const nz = z + dz;
+        if (inBounds(nx, nz)) this.dirtyChunks.add(chunkIndexFor(nx, nz));
+      }
+    }
+  }
+
+  markAllDirty(): void {
+    for (let i = 0; i < CHUNK_COUNT; i++) this.dirtyChunks.add(i);
   }
 
   /** Records a footstep. Returns true if this crossed the visible threshold. */
@@ -165,6 +193,7 @@ export class Terrain {
         if (!inBounds(x, z)) continue;
         this.heights[index(x, z)] = base;
         if (type !== undefined) this.types[index(x, z)] = type;
+        this.markDirty(x, z);
       }
     }
     this.revision++;

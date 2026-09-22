@@ -221,11 +221,3 @@ export const BLUEPRINTS: BlueprintDef[] = [
 
 export const BLUEPRINT_BY_ID = new Map(BLUEPRINTS.map((b) => [b.id, b]));
 
-export function blueprintCostText(def: BlueprintDef): string {
-  const parts: string[] = [];
-  if (def.cost.wood) parts.push(`${def.cost.wood} wood`);
-  if (def.cost.stone) parts.push(`${def.cost.stone} stone`);
-  if (def.cost.food) parts.push(`${def.cost.food} food`);
-  if (def.cost.tools) parts.push(`${def.cost.tools} tools`);
-  return parts.join(' · ') || 'free';
-}

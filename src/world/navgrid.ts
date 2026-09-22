@@ -127,10 +127,17 @@ export class NavGrid {
     return this.walkable[index(x, z)] === 1;
   }
 
-  /** Can a villager move between two adjacent cells? Checks the step height. */
+  /**
+   * Can a villager move between two adjacent cells?
+   *
+   * Climbing is limited to a single voxel, but dropping is not: you can always
+   * scramble down. That asymmetry is what makes raised ground a one-way wall,
+   * and it is also what stops the player stranding somebody on top of a spire
+   * they just pulled out of the ground underneath them.
+   */
   canStep(fromX: number, fromZ: number, toX: number, toZ: number): boolean {
     if (!this.isWalkable(toX, toZ)) return false;
-    const dh = Math.abs(this.terrain.heightAt(toX, toZ) - this.terrain.heightAt(fromX, fromZ));
+    const dh = this.terrain.heightAt(toX, toZ) - this.terrain.heightAt(fromX, fromZ);
     if (dh > MAX_STEP) return false;
     // Diagonals may not cut a corner between two blocked cells.
     if (fromX !== toX && fromZ !== toZ) {
@@ -213,8 +220,11 @@ export class NavGrid {
         if (!this.canStep(cx, cz, nx, nz)) continue;
 
         const ni = index(nx, nz);
-        // Climbing costs extra so villagers prefer the gentle way round.
-        const climb = Math.abs(this.terrain.heights[ni] - this.terrain.heights[current]) * 0.8;
+        // Climbing costs extra so villagers prefer the gentle way round, and
+        // a long drop costs a little too - they will take the stairs if there
+        // are stairs, and jump if there are not.
+        const rise = this.terrain.heights[ni] - this.terrain.heights[current];
+        const climb = rise >= 0 ? rise * 0.8 : -rise * 0.35;
         // Laid paths are a pleasure to walk on, and so, increasingly, is a
         // trail the village has worn in for itself. Routing along them is what
         // makes a path deepen instead of scattering.

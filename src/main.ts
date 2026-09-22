@@ -9,7 +9,7 @@ import './styles.css';
 import { Vector2 } from 'three';
 import { Haven, Miracle } from './sim/haven';
 import { Villager } from './sim/villager';
-import { BLUEPRINTS, BlueprintDef } from './build/blueprints';
+import { SculptTool, sculpt, strokeFootprint } from './world/sculpt';
 import { GameScene } from './render/scene';
 import { AudioEngine } from './audio/engine';
 import { GameUI } from './ui';
@@ -27,6 +27,10 @@ import {
 } from './state/save';
 
 const AUTOSAVE_INTERVAL = 20;
+/** Favor spent per cell of ground actually moved. */
+const FAVOR_PER_CELL = 0.06;
+/** Seconds between strokes while a finger is held down. */
+const STROKE_INTERVAL = 0.14;
 /** Largest simulation step we will take in one frame, to survive a stall. */
 const MAX_FRAME_DT = 0.25;
 
@@ -39,9 +43,11 @@ class Game {
   private settings: Settings;
 
   private mode: InteractionMode = 'watch';
-  private activeBlueprint: BlueprintDef | null = null;
+  private activeTool: SculptTool | null = null;
+  private brushRadius = 2;
   private selectedId: number | null = null;
-  private previewCell: { x: number; z: number } | null = null;
+  /** Strokes are rate-limited so a drag carves at a readable pace. */
+  private strokeCooldown = 0;
 
   private running = false;
   private started = false;
@@ -105,14 +111,14 @@ class Game {
     this.scene = new GameScene(this.canvas, this.haven, {
       onTap: (event) => this.handleTap(event.ndc),
       onDoubleTap: (event) => this.handleDoubleTap(event.ndc),
-      onDragStart: () => this.ui.buildBar.collapse(),
-      // While a blueprint is armed a finger aims it: press to see the ghost,
-      // slide to adjust, lift to place. On a touch screen there is no hover,
-      // so without this you would be placing buildings blind.
-      onPlacementMove: (event) => this.trackPreview(event.ndc),
-      onPlacementCommit: (event) => this.placeAt(event.ndc),
+      onDragStart: () => this.ui.shapeBar.collapse(),
+      // With a tool armed a single finger carves: press, drag across the
+      // ground, lift. Two fingers still move the camera, so you can line up a
+      // view without putting the tool down.
+      onPlacementMove: (event) => this.paint(event.ndc),
+      onPlacementCommit: (event) => this.paint(event.ndc, true),
     });
-    this.scene.rig.setPlacementMode(this.mode === 'build' && this.activeBlueprint !== null);
+    this.scene.rig.setPlacementMode(this.activeTool !== null);
     this.scene.setQuality({
       shadows: this.settings.shadows,
       weather: this.settings.weather,
@@ -153,6 +159,8 @@ class Game {
 
     this.fps += (1 / Math.max(rawDt, 0.0001) - this.fps) * 0.08;
 
+    if (this.strokeCooldown > 0) this.strokeCooldown = Math.max(0, this.strokeCooldown - rawDt);
+
     const simDt = this.started ? rawDt * this.settings.speed : 0;
     if (simDt > 0) {
       this.haven.update(simDt);
@@ -175,7 +183,9 @@ class Game {
       clock,
       selected: this.selected,
       mode: this.mode,
-      activeBlueprint: this.activeBlueprint,
+      activeTool: this.activeTool,
+      brushRadius: this.brushRadius,
+      strokeCost: this.strokeCost,
       speed: this.settings.speed,
       settings: this.settings,
       fps: this.fps,
@@ -195,10 +205,10 @@ class Game {
     this.selectedId = id;
   }
 
-  placeById(defId: string, x: number, z: number): boolean {
-    const def = BLUEPRINTS.find((b) => b.id === defId);
-    if (!def) return false;
-    return this.haven.placeBlueprint(def, x, z) !== null;
+  sculptAt(tool: SculptTool, x: number, z: number, radius: number): number {
+    const result = sculpt(this.haven.terrain, this.haven.props, tool, x, z, radius);
+    if (result.changed > 0) this.haven.nav.rebuild();
+    return result.changed;
   }
 
   private get selected(): Villager | null {
@@ -221,8 +231,13 @@ class Game {
 
   /* -------------------------------------------------------------- input */
 
+  /** Favor a single stroke of the armed brush would cost. */
+  private get strokeCost(): number {
+    return strokeFootprint(this.brushRadius) * FAVOR_PER_CELL;
+  }
+
   private handleTap(ndc: Vector2): void {
-    // Placement is handled by the rig's press-drag-release path, not by taps.
+    // Sculpting runs through the rig's press-drag path, not through taps.
     if (this.mode === 'direct' && this.selected) {
       const hit = this.scene.pickGround(ndc);
       if (hit && this.haven.orderTo(this.selected, hit.x, hit.z)) {
@@ -259,51 +274,75 @@ class Game {
     if (hit) this.scene.rig.focusOn(hit.x, hit.z, Math.max(14, this.scene.rig.cameraDistance * 0.55));
   }
 
-  /** Keeps the build ghost under the finger while a blueprint is armed. */
-  private trackPreview(ndc: Vector2): void {
-    if (this.mode !== 'build' || !this.activeBlueprint) {
-      this.scene.hidePreview();
-      this.previewCell = null;
+  /**
+   * One stroke of the armed tool, under the finger.
+   *
+   * Rate-limited rather than applied per pointer event: a drag should carve at
+   * a pace you can watch and stop, not gouge a canyon in one flick.
+   */
+  private paint(ndc: Vector2, final = false): void {
+    if (!this.activeTool) {
+      this.scene.hideBrush();
       return;
     }
+
     const hit = this.scene.pickGround(ndc);
     if (!hit) {
-      this.scene.hidePreview();
-      return;
-    }
-    const def = this.activeBlueprint;
-    // Centre the footprint on the tap so bigger buildings land where you aim.
-    const x = hit.x - Math.floor((def.width - 1) / 2);
-    const z = hit.z - Math.floor((def.depth - 1) / 2);
-    this.previewCell = { x, z };
-    const check = this.haven.structures.canPlace(def, x, z);
-    this.scene.showPreview(def, x, z, check.ok);
-  }
-
-  private placeAt(ndc: Vector2): void {
-    const def = this.activeBlueprint;
-    if (!def) return;
-    this.trackPreview(ndc);
-    const cell = this.previewCell;
-    if (!cell) return;
-
-    const check = this.haven.structures.canPlace(def, cell.x, cell.z);
-    if (!check.ok) {
-      this.audio.play('cancel');
-      this.ui.toasts.show('Not there', check.reason ?? 'That spot will not work.');
+      this.scene.hideBrush();
       return;
     }
 
-    const structure = this.haven.placeBlueprint(def, cell.x, cell.z);
-    if (structure) {
-      this.audio.play('place');
-      this.scene.hidePreview();
-      if (!this.haven.canAfford(def)) {
-        this.ui.toasts.show(
-          'Marked out',
-          'They will start once there are enough materials in the storehouse.',
-        );
+    const cost = this.strokeCost;
+    const affordable = this.haven.favor >= cost;
+    this.scene.showBrush(hit.x, hit.z, this.brushRadius, affordable);
+
+    if (!affordable) {
+      if (final) {
+        this.audio.play('cancel');
+        this.ui.toasts.show('Not enough Favor', 'Favor comes from a contented village.');
       }
+      return;
+    }
+    if (this.strokeCooldown > 0 && !final) return;
+    this.strokeCooldown = STROKE_INTERVAL;
+
+    const result = sculpt(
+      this.haven.terrain,
+      this.haven.props,
+      this.activeTool,
+      hit.x,
+      hit.z,
+      this.brushRadius,
+    );
+
+    if (result.changed === 0) {
+      if (result.blocked > 0 && final) {
+        this.ui.toasts.show('Something is built there', 'You cannot move ground out from under a house.');
+        this.audio.play('cancel');
+      }
+      return;
+    }
+
+    // Charged by the cell actually moved, so a stroke that half-hits a cliff
+    // edge costs half as much.
+    this.haven.favor = Math.max(0, this.haven.favor - result.changed * FAVOR_PER_CELL);
+    this.haven.nav.rebuild();
+    this.audio.play(this.activeTool === 'raise' ? 'place' : 'chop');
+
+    // Whatever came out of the ground is worth keeping.
+    let salvaged = 0;
+    for (const [resource, amount] of Object.entries(result.salvaged) as ['wood', number][]) {
+      if (amount > 0) salvaged += this.haven.store(resource, amount);
+    }
+
+    if (result.propsLost > 0) {
+      const what = result.propsLost === 1 ? 'Something' : `${result.propsLost} things`;
+      this.haven.log(
+        salvaged > 0
+          ? `${what} came out of the ground. They salvaged ${Math.round(salvaged)} from it.`
+          : `${what} came out of the ground as it shifted.`,
+        'neutral',
+      );
     }
   }
 
@@ -311,16 +350,20 @@ class Game {
 
   private handlers(): UiHandlers {
     return {
-      selectBlueprint: (def) => {
-        this.activeBlueprint = def;
-        this.mode = def ? 'build' : 'watch';
-        this.scene?.rig.setPlacementMode(def !== null);
-        if (def) {
+      selectTool: (tool) => {
+        this.activeTool = tool;
+        this.mode = tool ? 'sculpt' : 'watch';
+        this.scene?.rig.setPlacementMode(tool !== null);
+        if (tool) {
           this.selectedId = null;
           this.audio.play('tick');
         } else {
-          this.scene?.hidePreview();
+          this.scene?.hideBrush();
         }
+      },
+      setBrush: (radius) => {
+        this.brushRadius = radius;
+        this.audio.play('tick');
       },
       castMiracle: (miracle: Miracle) => {
         const target = miracle.targeted ? this.selected ?? undefined : undefined;
@@ -348,15 +391,15 @@ class Game {
       },
       deselect: () => {
         this.selectedId = null;
-        this.mode = this.activeBlueprint ? 'build' : 'watch';
-        this.scene.rig.setPlacementMode(this.activeBlueprint !== null);
+        this.mode = this.activeTool ? 'sculpt' : 'watch';
+        this.scene.rig.setPlacementMode(this.activeTool !== null);
       },
       armSend: () => {
         if (!this.selected) return;
         this.mode = this.mode === 'direct' ? 'watch' : 'direct';
-        this.activeBlueprint = null;
+        this.activeTool = null;
         this.scene.rig.setPlacementMode(false);
-        this.scene.hidePreview();
+        this.scene.hideBrush();
         this.audio.play('tick');
       },
       focusSelected: () => {
@@ -403,11 +446,11 @@ class Game {
     saveToStorage(this.haven);
     this.haven = haven;
     this.selectedId = null;
-    this.activeBlueprint = null;
+    this.activeTool = null;
     this.mode = 'watch';
     this.createScene();
     this.listenToHaven();
-    this.ui.buildBar.collapse();
+    this.ui.shapeBar.collapse();
     saveToStorage(this.haven);
     this.ui.toasts.show('A new island', `Seed: ${haven.seed}`);
   }
@@ -436,9 +479,9 @@ class Game {
     this.canvas.addEventListener(
       'pointermove',
       (event) => {
-        if (this.mode !== 'build') return;
+        if (this.mode !== 'sculpt') return;
         const rect = this.canvas.getBoundingClientRect();
-        this.trackPreview(
+        this.paint(
           new Vector2(
             ((event.clientX - rect.left) / rect.width) * 2 - 1,
             -((event.clientY - rect.top) / rect.height) * 2 + 1,
@@ -468,10 +511,10 @@ class Game {
         saveSettings(this.settings);
       } else if (event.key === 'Escape') {
         this.selectedId = null;
-        this.activeBlueprint = null;
+        this.activeTool = null;
         this.mode = 'watch';
         this.scene.rig.setPlacementMode(false);
-        this.scene.hidePreview();
+        this.scene.hideBrush();
       } else if (event.key >= '1' && event.key <= '4') {
         this.settings.speed = [0, 1, 2, 4][Number(event.key) - 1];
         saveSettings(this.settings);
@@ -503,7 +546,8 @@ function boot(): void {
       return game.view;
     },
     select: (id: number | null) => game.selectVillager(id),
-    place: (defId: string, x: number, z: number) => game.placeById(defId, x, z),
+    sculpt: (tool: SculptTool, x: number, z: number, radius = 2) =>
+      game.sculptAt(tool, x, z, radius),
   };
 
   // Safari on iPad still fires a synthetic double-tap zoom unless we say no.

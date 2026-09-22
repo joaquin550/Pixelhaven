@@ -10,9 +10,15 @@
  * which is what makes flat-shaded cubes read as a landscape rather than a
  * spreadsheet.
  */
-import { BufferAttribute, BufferGeometry, Color, Mesh } from 'three';
+import { BufferAttribute, BufferGeometry, Color, Group, Mesh } from 'three';
 import { Terrain } from '../world/terrain';
-import { WATER_LEVEL, WORLD_SIZE, index } from '../world/constants';
+import {
+  CHUNKS_PER_SIDE,
+  CHUNK_SIZE,
+  WATER_LEVEL,
+  WORLD_SIZE,
+  index,
+} from '../world/constants';
 import { SEASON_RESPONSE, SIDE_COLORS, TOP_COLORS } from './palette';
 import { createSeasonMaterial } from './seasonMaterial';
 
@@ -32,11 +38,20 @@ interface MeshBuffers {
   indices: number[];
 }
 
-export function buildTerrainGeometry(terrain: Terrain): BufferGeometry {
+/**
+ * Meshes one chunk of the island.
+ *
+ * Cells outside the chunk are still *read* - a side face and its ambient
+ * occlusion depend on the neighbours - but only cells inside it emit geometry,
+ * so chunks tile seamlessly.
+ */
+export function buildChunkGeometry(terrain: Terrain, chunkX: number, chunkZ: number): BufferGeometry {
   const buffers: MeshBuffers = { positions: [], normals: [], colors: [], season: [], indices: [] };
+  const x0 = chunkX * CHUNK_SIZE;
+  const z0 = chunkZ * CHUNK_SIZE;
 
-  for (let z = 0; z < WORLD_SIZE; z++) {
-    for (let x = 0; x < WORLD_SIZE; x++) {
+  for (let z = z0; z < z0 + CHUNK_SIZE; z++) {
+    for (let x = x0; x < x0 + CHUNK_SIZE; x++) {
       const i = index(x, z);
       const h = terrain.heights[i];
       const type = terrain.types[i];
@@ -61,6 +76,15 @@ export function buildTerrainGeometry(terrain: Terrain): BufferGeometry {
   geometry.setIndex(buffers.indices);
   geometry.computeBoundingSphere();
   return geometry;
+}
+
+/** The whole island in one geometry. Used by tests and benchmarks. */
+export function buildTerrainGeometry(terrain: Terrain): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  for (let cz = 0; cz < CHUNKS_PER_SIDE; cz++) {
+    for (let cx = 0; cx < CHUNKS_PER_SIDE; cx++) parts.push(buildChunkGeometry(terrain, cx, cz));
+  }
+  return parts[0];
 }
 
 function emitTop(
@@ -184,39 +208,77 @@ function emitSideIfExposed(
   b.indices.push(base, base + 1, base + 2, base, base + 2, base + 3);
 }
 
+/**
+ * The island, meshed in chunks.
+ *
+ * Sculpting the ground is a continuous gesture, so the cost of an edit has to
+ * stay well inside a frame. Only the chunks a change touched are rebuilt, and
+ * even then a budget spreads a large edit over a few frames rather than
+ * dropping one.
+ */
 export class TerrainRenderer {
-  readonly mesh: Mesh;
-  private revision = -1;
+  readonly group = new Group();
+  private chunks: Mesh[] = [];
+  private material = createSeasonMaterial({
+    vertexColors: true,
+    seasonAttribute: true,
+    seasonResponse: 1,
+    // Grass takes a gold wash in autumn, not the full leaf colour - the
+    // ground should read as dry, not as a pile of leaves.
+    blendScale: 0.42,
+    snowOnTop: true,
+  });
+
+  /** Chunks rebuilt per frame. Enough for a brush stroke, cheap enough to hide. */
+  private budget = 4;
 
   constructor(private terrain: Terrain) {
-    const material = createSeasonMaterial({
-      vertexColors: true,
-      seasonAttribute: true,
-      seasonResponse: 1,
-      // Grass takes a gold wash in autumn, not the full leaf colour - the
-      // ground should read as dry, not as a pile of leaves.
-      blendScale: 0.42,
-      snowOnTop: true,
-    });
-    this.mesh = new Mesh(buildTerrainGeometry(terrain), material);
-    this.mesh.name = 'terrain';
-    this.mesh.castShadow = true;
-    this.mesh.receiveShadow = true;
-    this.revision = terrain.revision;
+    this.group.name = 'terrain';
+    for (let cz = 0; cz < CHUNKS_PER_SIDE; cz++) {
+      for (let cx = 0; cx < CHUNKS_PER_SIDE; cx++) {
+        const mesh = new Mesh(buildChunkGeometry(terrain, cx, cz), this.material);
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        mesh.name = `terrain-${cx}-${cz}`;
+        this.chunks.push(mesh);
+        this.group.add(mesh);
+      }
+    }
+    terrain.dirtyChunks.clear();
   }
 
-  /** Rebuilds only when the terrain actually changed. */
+  /** Drains the terrain's dirty list, up to this frame's budget. */
   syncIfStale(): boolean {
-    if (this.terrain.revision === this.revision) return false;
-    const geometry = buildTerrainGeometry(this.terrain);
-    this.mesh.geometry.dispose();
-    this.mesh.geometry = geometry;
-    this.revision = this.terrain.revision;
+    const dirty = this.terrain.dirtyChunks;
+    if (dirty.size === 0) return false;
+
+    let done = 0;
+    for (const chunk of dirty) {
+      if (done >= this.budget) break;
+      dirty.delete(chunk);
+      const cx = chunk % CHUNKS_PER_SIDE;
+      const cz = Math.floor(chunk / CHUNKS_PER_SIDE);
+      const mesh = this.chunks[chunk];
+      mesh.geometry.dispose();
+      mesh.geometry = buildChunkGeometry(this.terrain, cx, cz);
+      done++;
+    }
     return true;
   }
 
+  /** Rebuilds everything at once, for a world swap. */
+  rebuildAll(): void {
+    this.terrain.markAllDirty();
+    const previous = this.budget;
+    this.budget = this.chunks.length;
+    this.syncIfStale();
+    this.budget = previous;
+  }
+
   dispose(): void {
-    this.mesh.geometry.dispose();
-    (this.mesh.material as { dispose(): void }).dispose();
+    for (const mesh of this.chunks) mesh.geometry.dispose();
+    this.chunks.length = 0;
+    this.group.clear();
+    this.material.dispose();
   }
 }

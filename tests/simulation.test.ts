@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { Haven } from '../src/sim/haven';
 import { BLUEPRINT_BY_ID } from '../src/build/blueprints';
-import { TRAIL_THRESHOLD, TerrainType, WATER_LEVEL, WORLD_SIZE } from '../src/world/constants';
+import { planNextBuilding } from '../src/sim/planner';
+import { TRAIL_THRESHOLD, WATER_LEVEL, WORLD_SIZE } from '../src/world/constants';
 
 function runFor(haven: Haven, seconds: number, step = 1 / 20): void {
   for (let t = 0; t < seconds; t += step) haven.update(step);
@@ -123,50 +124,51 @@ describe('the resource ledger', () => {
 });
 
 describe('the tool economy', () => {
-  it('crafts tools at a workshop and spends the raw materials for them', () => {
+  it('only ever has tools after a workshop stands', () => {
     const haven = new Haven('toolmaking');
-    // Comfortably under the storage cap, or finished tools have nowhere to go.
     haven.resources = { wood: 150, stone: 120, food: 60, tools: 0 };
 
-    const def = BLUEPRINT_BY_ID.get('workshop')!;
-    let workshop = null;
-    for (let radius = 0; radius < 18 && !workshop; radius++) {
-      for (let dz = -radius; dz <= radius && !workshop; dz++) {
-        for (let dx = -radius; dx <= radius && !workshop; dx++) {
-          workshop = haven.placeBlueprint(def, haven.origin.x + dx, haven.origin.z + dz);
-        }
-      }
+    let workshopStood = false;
+    for (let t = 0; t < 3600; t += 1 / 10) {
+      haven.update(1 / 10);
+      if (haven.structures.completedOfType('workshop').length > 0) workshopStood = true;
+      // The causal rule: tools cannot exist before somewhere to make them.
+      if (haven.resources.tools > 0) expect(workshopStood).toBe(true);
     }
-    expect(workshop).not.toBeNull();
-    haven.structures.deliver(workshop!, 'wood', 999);
-    haven.structures.deliver(workshop!, 'stone', 999);
-    haven.structures.applyWork(workshop!, 99999);
-    haven.nav.rebuild();
 
-    // Strip the island bare, and turn the soil to bare rock so the forest
-    // cannot reseed itself either. From here the only thing that can move wood
-    // and stone is the workshop consuming them.
-    haven.props.props.length = 0;
-    haven.props.revision++;
-    haven.terrain.types.fill(TerrainType.Stone);
-    haven.terrain.occupancy.fill(0);
-    haven.nav.rebuild();
-
-    const rawBefore = haven.resources.wood + haven.resources.stone;
-    runFor(haven, 1500);
-
+    // And the village gets there on its own, without being told to.
+    expect(workshopStood).toBe(true);
     expect(haven.resources.tools).toBeGreaterThan(0);
-    expect(haven.resources.wood + haven.resources.stone).toBeLessThan(rawBefore);
-    // Three tools for every six units of raw material.
-    const consumed = rawBefore - (haven.resources.wood + haven.resources.stone);
-    expect(haven.resources.tools).toBeGreaterThan(consumed * 0.3);
   });
 
-  it('leaves tools alone when there is nowhere to make them', () => {
-    const haven = new Haven('no-workshop');
-    haven.resources = { wood: 150, stone: 120, food: 60, tools: 0 };
-    runFor(haven, 900);
-    expect(haven.resources.tools).toBe(0);
+  it('does not want a workshop until there are enough hands for one', () => {
+    const haven = new Haven('workshop-gate', { populate: false });
+    haven.addVillager(haven.origin.x, haven.origin.z);
+    haven.addVillager(haven.origin.x + 1, haven.origin.z);
+    haven.resources = { wood: 300, stone: 300, food: 300, tools: 0 };
+
+    const ask = () =>
+      planNextBuilding({
+        terrain: haven.terrain,
+        props: haven.props,
+        structures: haven.structures,
+        population: haven.villagers.length,
+        beds: 99,
+        resources: haven.resources,
+        capacity: haven.capacity,
+        totalStored: haven.totalStored,
+        centre: haven.villageCentre,
+      });
+
+    // Two villagers: plenty of materials, but no call for a workshop yet.
+    let plan = ask();
+    while (plan && plan.def.id !== 'workshop') {
+      haven.structures.place(plan.def, plan.x, plan.z);
+      haven.structures.applyWork(haven.structures.structures.at(-1)!, 0);
+      plan = ask();
+      if (haven.structures.structures.length > 12) break;
+    }
+    expect(plan?.def.id).not.toBe('workshop');
   });
 
   it('makes a stocked toolshed speed everyone up, within limits', () => {

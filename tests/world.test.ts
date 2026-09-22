@@ -125,14 +125,24 @@ describe('navigation', () => {
     expect(checked).toBeGreaterThan(0);
   });
 
-  it('refuses steps taller than one voxel', () => {
+  it('refuses to climb more than one voxel but allows any drop', () => {
+    let sawClimb = false;
+    let sawDrop = false;
     for (let z = 1; z < WORLD_SIZE - 1; z++) {
       for (let x = 1; x < WORLD_SIZE - 1; x++) {
         if (!nav.isWalkable(x, z) || !nav.isWalkable(x + 1, z)) continue;
-        const climb = Math.abs(terrain.heightAt(x + 1, z) - terrain.heightAt(x, z));
-        if (climb > 1) expect(nav.canStep(x, z, x + 1, z)).toBe(false);
+        const rise = terrain.heightAt(x + 1, z) - terrain.heightAt(x, z);
+        if (rise > 1) {
+          sawClimb = true;
+          expect(nav.canStep(x, z, x + 1, z)).toBe(false);
+          // ...but the same edge is passable coming the other way, downhill.
+          expect(nav.canStep(x + 1, z, x, z)).toBe(true);
+          sawDrop = true;
+        }
       }
     }
+    expect(sawClimb).toBe(true);
+    expect(sawDrop).toBe(true);
   });
 
   it('finds a path made of adjacent, walkable cells', () => {

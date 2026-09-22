@@ -15,6 +15,7 @@ import { NavGrid } from '../world/navgrid';
 import { WATER_LEVEL, WORLD_SIZE } from '../world/constants';
 import { BLUEPRINT_BY_ID, BlueprintDef, ResourceKind } from '../build/blueprints';
 import { Structure, StructureRegistry } from '../build/structures';
+import { planNextBuilding } from './planner';
 import { ColonyView, LogTone, ResourceDemand, SimContext } from './context';
 import { Villager, createVillager } from './villager';
 import { orderVillagerTo, updateVillager } from './brain';
@@ -104,6 +105,8 @@ export class Haven implements ColonyView {
   private fullStoreCooldown = 0;
   /** Footfall fades on a timer rather than every tick - it is a whole-island pass. */
   private wearTimer = 0;
+  /** The village reconsiders what to build next on a timer, not every frame. */
+  private planTimer = 12;
   private lastDayLogged = 1;
 
   constructor(seed: string, options: { populate?: boolean; blank?: boolean } = {}) {
@@ -204,6 +207,7 @@ export class Haven implements ColonyView {
     this.updateFavor(dt, snapshot);
     this.updateStructureAges(dt);
     this.updatePopulation(dt);
+    this.updatePlanning(dt);
     this.updateRegrowth(dt);
     this.updateLogs(dt);
     this.checkStorage(dt);
@@ -375,6 +379,56 @@ export class Haven implements ColonyView {
     }
   }
 
+  /**
+   * The village looks around and decides what it needs.
+   *
+   * This is the whole point of the game's shape: the player never places a
+   * building. They change what the island offers, and this is what notices.
+   */
+  private updatePlanning(dt: number): void {
+    this.planTimer -= dt;
+    if (this.planTimer > 0) return;
+    this.planTimer = 20;
+    if (this.villagers.length === 0) return;
+
+    const plan = planNextBuilding({
+      terrain: this.terrain,
+      props: this.props,
+      structures: this.structures,
+      population: this.villagers.length,
+      beds: this.beds,
+      resources: this.resources,
+      capacity: this.capacity,
+      totalStored: this.totalStored,
+      centre: this.villageCentre,
+    });
+    if (!plan) return;
+
+    const structure = this.structures.place(plan.def, plan.x, plan.z);
+    this.nav.rebuild();
+    this.events.emit('structurePlaced', structure);
+    this.log(`They started marking out a ${plan.def.name} - ${plan.reason}.`, 'neutral');
+  }
+
+  /**
+   * Where the village thinks it is: the middle of what it has built, or the
+   * founding site while there is nothing to average.
+   */
+  get villageCentre(): { x: number; z: number } {
+    const built = this.structures.structures;
+    if (built.length === 0) return { x: this.origin.x, z: this.origin.z };
+    let x = 0;
+    let z = 0;
+    for (const structure of built) {
+      x += structure.x + structure.width / 2;
+      z += structure.z + structure.depth / 2;
+    }
+    // Weighted towards the founding site so a single outlying build does not
+    // drag the whole village after it.
+    const n = built.length + 1;
+    return { x: (x + this.origin.x) / n, z: (z + this.origin.z) / n };
+  }
+
   private findClosePair(): [Villager, Villager] | undefined {
     for (const a of this.villagers) {
       const friend = a.bestFriend();
@@ -544,16 +598,12 @@ export class Haven implements ColonyView {
 
   /* ------------------------------------------------------- player actions */
 
-  canAfford(def: BlueprintDef): boolean {
-    for (const [resource, amount] of Object.entries(def.cost) as [ResourceKind, number][]) {
-      if (this.resources[resource] < amount) return false;
-    }
-    return true;
-  }
-
   /**
-   * Places a blueprint. Materials are not deducted here - villagers haul them
-   * from the stockpile, which is the whole point of watching them work.
+   * Places a blueprint directly.
+   *
+   * The player no longer does this - the village decides for itself in
+   * updatePlanning. Kept because that is what the planner calls through, and
+   * because the tests place buildings to set up a scenario.
    */
   placeBlueprint(def: BlueprintDef, x: number, z: number): Structure | null {
     const check = this.structures.canPlace(def, x, z);
@@ -561,21 +611,7 @@ export class Haven implements ColonyView {
     const structure = this.structures.place(def, x, z);
     this.nav.rebuild();
     this.events.emit('structurePlaced', structure);
-    this.log(`You marked out a ${def.name}.`, 'neutral');
     return structure;
-  }
-
-  cancelBlueprint(structure: Structure): void {
-    const def = BLUEPRINT_BY_ID.get(structure.defId);
-    const refund = this.structures.cancel(structure);
-    for (const [resource, amount] of Object.entries(refund) as [ResourceKind, number][]) {
-      if (amount > 0) this.store(resource, amount);
-    }
-    for (const villager of this.villagers) {
-      if (villager.task?.structureId === structure.id) villager.clearTask();
-    }
-    this.nav.rebuild();
-    if (def) this.log(`The ${def.name} plan was set aside.`, 'neutral');
   }
 
   orderTo(villager: Villager, x: number, z: number): boolean {

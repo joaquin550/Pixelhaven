@@ -378,6 +378,58 @@ const ICONS: Record<string, IconDef> = {
       '........',
     ],
   },
+  raise: {
+    palette: { a: '#8fbc6a', b: '#6d4a2c', c: '#b7d98f' },
+    rows: [
+      '...cc...',
+      '..cccc..',
+      '.cccccc.',
+      'cc.cc.cc',
+      '...cc...',
+      'aaaaaaaa',
+      'bbbbbbbb',
+      'bbbbbbbb',
+    ],
+  },
+  lower: {
+    palette: { a: '#8fbc6a', b: '#6d4a2c', c: '#d9a06a' },
+    rows: [
+      'aaaaaaaa',
+      'bbbbbbbb',
+      'bbbbbbbb',
+      '...cc...',
+      'cc.cc.cc',
+      '.cccccc.',
+      '..cccc..',
+      '...cc...',
+    ],
+  },
+  level: {
+    palette: { a: '#8fbc6a', b: '#6d4a2c', c: '#cdc3b4' },
+    rows: [
+      '........',
+      'cccccccc',
+      '........',
+      'aaaaaaaa',
+      'bbbbbbbb',
+      'bb.bb.bb',
+      'bbbbbbbb',
+      '........',
+    ],
+  },
+  brush: {
+    palette: { a: '#cdc3b4', b: '#8a8177' },
+    rows: [
+      '........',
+      '..aaaa..',
+      '.a....a.',
+      'a......a',
+      'a......a',
+      '.a....a.',
+      '..aaaa..',
+      '........',
+    ],
+  },
   hammer: {
     palette: { a: '#8d939c', b: '#6d4a2c', c: '#b9bec6' },
     rows: [

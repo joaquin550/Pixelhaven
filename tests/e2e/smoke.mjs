@@ -74,8 +74,8 @@ try {
   const handle = await page.evaluate(() => typeof window.pixelHaven);
   assert(handle === 'object', 'debug handle is missing, so the game never booted');
 
-  // Place a cottage the way a player would: open the drawer, pick a card,
-  // press and drag on the world, lift.
+  // Sculpt the way a player would: open the drawer, pick a tool, press and
+  // drag across the ground, lift.
   await page.evaluate(() => {
     // Enough to build with, but well under capacity - a full storehouse
     // legitimately stops everybody gathering.
@@ -90,33 +90,36 @@ try {
     .waitForFunction(() => window.pixelHaven.scene.rig.cameraDistance < 30, null, { timeout: 30000 })
     .catch(() => {});
 
+  await page.evaluate(() => {
+    // Plenty of Favor, so the stroke is not refused for being unaffordable.
+    window.pixelHaven.haven.favor = 500;
+  });
   await tap('.fab', 540, 800);
   await page.waitForTimeout(500);
   await tap('.card', 300, 700);
   await page.waitForTimeout(400);
 
-  // Try a handful of spots. Not every patch of ground takes a 3x3 cottage -
-  // trees, slopes and water all refuse it - and which patch is under a given
-  // screen point depends on exactly where the camera settled.
-  const spots = [
-    [597, 417], [560, 400], [640, 440], [520, 440], [680, 400],
-    [560, 470], [660, 470], [500, 380], [700, 450], [597, 350],
-  ];
-  let placedCottage = false;
-  for (const [x, y] of spots) {
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    await page.waitForTimeout(150);
-    await page.mouse.move(x + 10, y + 8, { steps: 4 });
-    await page.waitForTimeout(150);
-    await page.mouse.up();
-    await page.waitForTimeout(450);
-    placedCottage = await page.evaluate(() =>
-      window.pixelHaven.haven.structures.structures.some((s) => s.defId === 'cottage'),
-    );
-    if (placedCottage) break;
-  }
-  assert(placedCottage, 'press, slide and release never placed a cottage anywhere');
+  const heightsBefore = await page.evaluate(() =>
+    Array.from(window.pixelHaven.haven.terrain.heights),
+  );
+
+  // Drag across the middle of the view. Wherever that lands on the island,
+  // the ground should move.
+  await page.mouse.move(560, 400);
+  await page.mouse.down();
+  await page.waitForTimeout(200);
+  await page.mouse.move(640, 440, { steps: 10 });
+  await page.waitForTimeout(400);
+  await page.mouse.up();
+  await page.waitForTimeout(500);
+
+  const moved = await page.evaluate((before) => {
+    const now = window.pixelHaven.haven.terrain.heights;
+    let count = 0;
+    for (let i = 0; i < now.length; i++) if (now[i] !== before[i]) count++;
+    return count;
+  }, heightsBefore);
+  assert(moved > 0, 'dragging the raise tool across the island moved no ground');
 
   // Run at speed until somebody has completed a full fell-it-and-carry-it-home
   // cycle. Polling rather than sleeping: the simulation advances per rendered
@@ -139,11 +142,13 @@ try {
       // they walk straight back out. Standing in the sea is not.
       inSea: haven.villagers.filter((v) => !haven.terrain.isLand(v.cellX, v.cellZ)).length,
       gathered: haven.stats.resourcesGathered,
+      structures: haven.structures.structures.length,
     };
   });
   assert(health.offMap === 0, 'a villager left the world');
   assert(health.inSea === 0, 'a villager ended up somewhere unwalkable');
   assert(health.gathered > 0, 'nobody gathered anything');
+  assert(health.structures > 0, 'the village never decided to build anything of its own');
 
   // Selecting somebody should open the inspector.
   await page.evaluate(() => window.pixelHaven.select(window.pixelHaven.haven.villagers[0].id));
