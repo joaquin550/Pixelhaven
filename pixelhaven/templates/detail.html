@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ img.title or img.filename }} | Pixelhaven</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <h1><a href="/">Pixelhaven</a></h1>
+  <span class="meta"><a href="/">Back to library</a></span>
+</header>
+<main>
+  <div class="detail">
+    <div class="preview">
+      <a href="/files/{{ img.filename | urlencode }}" target="_blank" rel="noopener">
+        <img src="/files/{{ img.filename | urlencode }}" alt="{{ img.title }}">
+      </a>
+    </div>
+    <div>
+      <section class="panel">
+        <form id="edit">
+          <div class="field"><label>Title</label><input type="text" name="title" value="{{ img.title or '' }}"></div>
+          <div class="field"><label>Description</label><textarea name="description" rows="3">{{ img.description or '' }}</textarea></div>
+          <div class="field"><label>Tags (comma separated)</label><textarea name="tags" rows="3">{{ img.tags | join(', ') }}</textarea></div>
+          <div class="field"><label>File name (hash and extension are kept)</label>
+            <input type="text" name="name" value="{{ img.filename.rsplit('-', 1)[0] }}"></div>
+          <div class="actions">
+            <button type="submit">Save</button>
+            <button type="button" class="secondary" id="retag">Re-tag with AI</button>
+            <a class="button secondary" href="/files/{{ img.filename | urlencode }}" download="{{ img.filename }}">Download</a>
+            <button type="button" class="danger" id="delete">Delete</button>
+          </div>
+          <p id="msg" class="hint"></p>
+        </form>
+      </section>
+      <section class="panel">
+        <dl class="meta">
+          <dt>File name</dt><dd>{{ img.filename }}</dd>
+          <dt>Original name</dt><dd>{{ img.original_name }}</dd>
+          <dt>Image URL</dt><dd><a href="{{ img.source_url }}" target="_blank" rel="noopener noreferrer">{{ img.source_url }}</a></dd>
+          {% if img.page_url %}<dt>Found on</dt><dd><a href="{{ img.page_url }}" target="_blank" rel="noopener noreferrer">{{ img.page_title or img.page_url }}</a></dd>{% endif %}
+          <dt>Size</dt><dd>{{ img.width }} x {{ img.height }} px, {{ img.format }}, {{ (img.size_bytes / 1024) | round(1) }} KB</dd>
+          <dt>Tagged by</dt><dd>{{ img.tagged_by }}</dd>
+          <dt>Added</dt><dd>{{ img.created_at }}</dd>
+          <dt>SHA-256</dt><dd>{{ img.sha256 }}</dd>
+        </dl>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+const id = {{ img.id }};
+const msg = document.getElementById("msg");
+async function call(method, url, body) {
+  const r = await fetch(url, { method, headers: {"Content-Type": "application/json"}, body: body && JSON.stringify(body) });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.statusText);
+  return r.status === 204 ? null : r.json();
+}
+document.getElementById("edit").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target;
+  try {
+    await call("PATCH", `/api/images/${id}`, { title: f.elements.title.value, description: f.elements.description.value, tags: f.elements.tags.value, name: f.elements.name.value });
+    location.reload();
+  } catch (err) { msg.textContent = err.message; }
+});
+document.getElementById("retag").addEventListener("click", async e => {
+  e.target.disabled = true; msg.textContent = "Re-tagging...";
+  try { await call("POST", `/api/images/${id}/retag`); location.reload(); }
+  catch (err) { msg.textContent = err.message; e.target.disabled = false; }
+});
+document.getElementById("delete").addEventListener("click", async () => {
+  if (!confirm("Delete this image from the library?")) return;
+  await call("DELETE", `/api/images/${id}`); location.href = "/";
+});
+</script>
+</body>
+</html>

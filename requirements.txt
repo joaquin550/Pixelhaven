@@ -1,0 +1,8 @@
+flask>=3.0
+requests>=2.31
+beautifulsoup4>=4.12
+pillow>=10.0
+pydantic>=2.0
+anthropic>=0.80
+# Optional: render JavaScript-heavy pages (then run `playwright install chromium`)
+playwright>=1.44
