@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pixelhaven</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+<header>
+  <h1><a href="/">Pixelhaven</a></h1>
+  <span class="meta" id="count"></span>
+  <span class="spacer"></span>
+  <span class="meta">Tagging: {% if ai %}Claude ({{ model }}){% else %}basic (set ANTHROPIC_API_KEY for AI tags){% endif %}</span>
+  <a class="meta" href="/api/export.json">Export JSON</a>
+</header>
+<main>
+  <section class="panel">
+    <form class="scrape" id="scrape">
+      <input type="url" name="url" placeholder="Paste a link: Pinterest pin, Instagram post, Google Images search, any page or image" required>
+      <label class="check">Max <input type="number" name="max_images" value="20" min="1" max="200"></label>
+      <label class="check"><input type="checkbox" name="render_js"> Render JavaScript</label>
+      <button type="submit">Scrape</button>
+    </form>
+    <p class="hint">Every image is saved with its original filename and source URL, renamed after what it shows, and tagged. Use "Render JavaScript" for pages that load images dynamically.</p>
+    <div id="status"></div>
+  </section>
+
+  <div class="toolbar">
+    <input type="search" id="q" placeholder="Search titles, descriptions, tags, filenames, sources">
+    <button class="secondary" id="clear" type="button">Clear filters</button>
+  </div>
+  <div class="chips" id="tags"></div>
+  <div class="grid" id="grid"></div>
+  <div class="empty" id="empty" hidden>No images yet. Paste a link above to start your library.</div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const state = { q: "", tags: new Set() };
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+
+async function loadImages() {
+  const p = new URLSearchParams();
+  if (state.q) p.set("q", state.q);
+  state.tags.forEach(t => p.append("tag", t));
+  const r = await fetch("/api/images?" + p);
+  const { images, total } = await r.json();
+  $("#count").textContent = `${total} image${total === 1 ? "" : "s"}`;
+  $("#empty").hidden = images.length > 0;
+  if (!images.length && (state.q || state.tags.size)) {
+    $("#empty").hidden = false; $("#empty").textContent = "No images match these filters.";
+  } else { $("#empty").textContent = "No images yet. Paste a link above to start your library."; }
+  $("#grid").innerHTML = images.map(img => `
+    <a class="card" href="/image/${img.id}">
+      <img loading="lazy" src="/files/${encodeURIComponent(img.filename)}" alt="${esc(img.title)}" width="${img.width}" height="${img.height}">
+      <div class="body">
+        <div class="title">${esc(img.title || img.filename)}</div>
+        <div class="name">${esc(img.filename)}</div>
+        <div class="tags">${img.tags.slice(0, 8).map(t => `<span>${esc(t)}</span>`).join("")}</div>
+      </div>
+    </a>`).join("");
+}
+
+async function loadTags() {
+  const { tags } = await (await fetch("/api/tags")).json();
+  $("#tags").innerHTML = tags.map(({tag, count}) =>
+    `<span class="chip ${state.tags.has(tag) ? "active" : ""}" data-tag="${esc(tag)}">${esc(tag)}<small>${count}</small></span>`
+  ).join("");
+}
+
+$("#tags").addEventListener("click", e => {
+  const chip = e.target.closest(".chip"); if (!chip) return;
+  const t = chip.dataset.tag;
+  state.tags.has(t) ? state.tags.delete(t) : state.tags.add(t);
+  loadTags(); loadImages();
+});
+let timer;
+$("#q").addEventListener("input", e => { clearTimeout(timer); timer = setTimeout(() => { state.q = e.target.value.trim(); loadImages(); }, 250); });
+$("#clear").addEventListener("click", () => { state.q = ""; state.tags.clear(); $("#q").value = ""; loadTags(); loadImages(); });
+
+$("#scrape").addEventListener("submit", async e => {
+  e.preventDefault();
+  const f = e.target, btn = f.querySelector("button"), status = $("#status");
+  const body = { url: f.url.value, max_images: f.max_images.value, render_js: f.render_js.checked };
+  btn.disabled = true; status.className = ""; status.textContent = "Starting...";
+  try {
+    const r = await fetch("/api/scrape", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+    let job = await r.json();
+    if (!r.ok) throw new Error(job.error || "Request failed");
+    let seen = 0;
+    while (job.status !== "done" && job.status !== "error") {
+      await new Promise(res => setTimeout(res, 1200));
+      job = await (await fetch("/api/jobs/" + job.id)).json();
+      status.textContent = job.status === "finding" ? "Looking for images..."
+        : `Found ${job.found} candidates. Downloading and tagging: ${job.added.length} added, ${job.skipped} skipped...`;
+      if (job.added.length !== seen) { seen = job.added.length; loadImages(); }
+    }
+    status.className = job.status === "error" ? "error" : "ok";
+    status.textContent = job.message + (job.errors.length ? ` (${job.errors.length} error(s), see server log)` : "");
+    if (job.status === "done") f.url.value = "";
+  } catch (err) {
+    status.className = "error"; status.textContent = err.message;
+  } finally {
+    btn.disabled = false; loadTags(); loadImages();
+  }
+});
+
+loadTags(); loadImages();
+</script>
+</body>
+</html>
