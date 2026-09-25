@@ -109,11 +109,13 @@ def create_app(library: Library | None = None) -> Flask:
 
 def main() -> None:
     import argparse
+    import os
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(description="Run the Pixelhaven web app")
-    p.add_argument("--host", default="127.0.0.1")
-    p.add_argument("--port", type=int, default=5000)
+    # Hosts like Replit/Render pass HOST/PORT in the environment.
+    p.add_argument("--host", default=os.environ.get("HOST", "127.0.0.1"))
+    p.add_argument("--port", type=int, default=int(os.environ.get("PORT", 5000)))
     p.add_argument("--debug", action="store_true")
     args = p.parse_args()
     create_app().run(host=args.host, port=args.port, debug=args.debug, threaded=True)

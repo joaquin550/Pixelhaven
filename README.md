@@ -34,6 +34,14 @@ In the web app:
    re-run AI tagging, download or delete it.
 4. **Export JSON** downloads all metadata.
 
+### On an iPad or phone (Replit)
+
+1. Go to replit.com in Safari, choose **Create App > Import from GitHub**, and pick this repo.
+2. Open **Secrets** and add `ANTHROPIC_API_KEY` (optional, for AI tags).
+3. Press **Run**. The app opens in the preview pane; open it full screen in a new tab.
+
+"Render JavaScript" needs Chromium and may not work on Replit; plain scraping does.
+
 ### Command line
 
 ```bash

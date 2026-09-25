@@ -1,0 +1,6 @@
+run = "pip install -q -r requirements.txt && HOST=0.0.0.0 PORT=5000 python -m pixelhaven"
+modules = ["python-3.11"]
+
+[[ports]]
+localPort = 5000
+externalPort = 80
